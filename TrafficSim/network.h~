@@ -1,0 +1,14 @@
+#ifndef TNET_H
+#define TNET_H
+
+#include <petscsnes.h>
+#include <petscdmnetwork.h>
+
+#define COUNTY_NAME_LEN 3
+
+struct _p_RoadCtx{
+
+  PetscInt  id;/*internal identification for easy indexing*/
+  PetscReal postmile;
+  char      county[COUNTY_NAME_LEN];
+  /*if two letters, add a trailing X (e.g. LA -> LAX)*/
