@@ -1,4 +1,5 @@
-#include "../include/highway.h"
+#include "../include/tshighway.h"
+#include <cstdlib.h>
 
 /* subroutines for TSHighway handline */
 
@@ -50,32 +51,38 @@ PetscErrorCode HighwaySetIdentification(TSHighway highway, const PetscInt* distr
 					char* highway_name, char* county_name,
 					const PetscInt* city_name_len, char* city_name)
 {
+  PetscErrorCode ierr;
   PetscFunctionBegin;
+
+  /* allocate memory for info */
+  ierr = PetscNew(&(highway->id_info));
+  
+  
   if PetscLikely(district){
-    highway->district = *district;
+    highway->id_info->district = *district;
   } else {
-    highway->district = -1;
+    highway->id_info->district = -1;
   }
   
   if PetscLikely(direction){
-    highway->direction = *direction;
+    highway->id_info->direction = *direction;
   }
   else {
-    highway->direction = TS_UNKNOWN_DIRECTION;
+    highway->id_info->direction = TS_UNKNOWN_DIRECTION;
   }
 
   if(length){
     if(*length > 0){
-      highway->length = *length;
+      highway->id_info->length = *length;
     } else {
       SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Highway length must be positive.\n");
     }
   }
   
   if PetscLikely(postmile){
-    highway->postmile = *postmile;
+    highway->id_info->postmile = *postmile;
   } else {
-    highway->postmile = -1.0;
+    highway->id_info->postmile = -1.0;
   }
 
   if(highway_name){
@@ -83,8 +90,8 @@ PetscErrorCode HighwaySetIdentification(TSHighway highway, const PetscInt* distr
       if PetscUnlikely(*highway_name_len > TS_MAX_ROAD_NAME_LEN){
 	  SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_SIZ, "highway_name_len (including null-terminator) must be less than or equal to TS_MAX_ROAD_NAME_LEN.\n");
       } else {
-	highway->name_length = *highway_name_len;
-	highway->name = highway_name;
+	highway->id_info->name_length = *highway_name_len;
+	highway->id_info->name = highway_name;
       }
     } else {
       /* DANGER WARNING */
@@ -92,20 +99,20 @@ PetscErrorCode HighwaySetIdentification(TSHighway highway, const PetscInt* distr
       if PetscUnlikely(namelen > TS_MAX_ROAD_NAME_LEN){
 	  SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_SIZ, "highway_name_len (including null-terminator) must be less than or equal to TS_MAX_ROAD_NAME_LEN.\n");
       } else {
-	highway->name_length = namelen;
-        highway->name = highway_name;
+	highway->id_info->name_length = namelen;
+        highway->id_info->name = highway_name;
       }
     }
   }
   else {
-    highway->name_length = -1;
+    highway->id_info->name_length = -1;
   }
 
   if(county_name){
     if PetscUnlikely(sizeof(county_name)/sizeof(county_name[0]) != TS_COUNTY_NAME_LEN){
 	SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_SIZ, "county_name must have exactly TS_COUNTY_NAME_LEN characters.\n");
     } else {
-      highway->county = county_name;
+      highway->id_info->county = county_name;
     }
   }
 
@@ -114,8 +121,8 @@ PetscErrorCode HighwaySetIdentification(TSHighway highway, const PetscInt* distr
 	if PetscUnlikely(*city_name_len > TS_MAX_CITY_NAME_LEN){
 	    SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_SIZ , "city_name_len must be less than or equal to TS_MAX_CITY_NAME_LEN.\n");
         } else {
-	  highway->city_name_length = *city_name_len;
-	  highway->city_name = city_name;
+	  highway->id_info->city_name_length = *city_name_len;
+	  highway->id_info->city_name = city_name;
 	}
       }
     else {
@@ -123,8 +130,8 @@ PetscErrorCode HighwaySetIdentification(TSHighway highway, const PetscInt* distr
       if(PetscUnlikely(cnamelen > TS_MAX_CITY_NAME_LEN)){
 	SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_SIZ , "city_name_len must be less than or equal to TS_MAX_CITY_NAME_LEN.\n");
       } else {
-	highway->city_name_length = cnamelen;
-	highway->city_name = city_name;
+	highway->id_info->city_name_length = cnamelen;
+	highway->if_info->city_name = city_name;
       }
     }
   }
@@ -157,7 +164,19 @@ PetscErrorCode HighwaySetTrafficData(TSHighway highway, const PetscInt* num_entr
 				     const PetscReal* ahead_aadt, const PetscReal* speed_limit,
 				     const PetscInt* num_lanes)
 {
+  PetscErrorCode ierr;
+  size_t       nentry, nexit, ninter;
   PetscFunctionBegin;
+  
+  nentry = num_entries ? (*num_entries >= 0 ? *num_entries : 0) : 0;
+  nexit = num_exits ? (*num_exits >=0 ? *num_exits : 0): 0;
+  ninter = num_interchanges ? (*num_interchanges >= 0 ? *num_interchanges : 0) : 0;
+
+  ierr = PetscCalloc3(nentry, &(highway->entries), nexit, &(highway->exits), ninter, &(highway->interchanges));
+
+  /* maybe could delete a lot of the below code, but I think I should still
+     return an error if an argument is out of range (so that the program doesn't fail 
+     or misbehave silently if the end user made a typo). */
   if(entries){
     if(num_entries){
       if(*num_entries >= 0){

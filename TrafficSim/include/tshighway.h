@@ -3,7 +3,7 @@
 
 #include <petsc.h>
 #include <mpi.h>
-
+#include "tsdensity.h"
 
 #define TS_COUNTY_NAME_LEN 3
 #define TS_MAX_CITY_NAME_LEN 50
@@ -41,6 +41,7 @@ extern PetscErrorCode StaticPoissonHighwayEntryCreate(TSHighwayEntryCtx*, const 
 
 
 typedef enum {
+	      TS_NO_EXIT,
 	      TS_STATIC_EXIT,/* time-independent exit probability for each passing car */
 	      TS_DYNAMIC_EXIT /* time-dependent exit probability for each passing car */
 } TSExitType;
@@ -87,9 +88,21 @@ typedef struct {
   PetscReal rho_behind, v_behind; /* boundary values behind */
 } TSHighwayTrafficBoundary;
 
-struct _ts_HighwayCtx{
+struct _ts_HighwayLocalSolverCtx {
+  TSHighwayTrafficBoundary bc;
+  Vec                      x;
+  TSHighwayTrafficField    *old_rho_v;
+  PetscReal                dt;
+  DM                       da;
+  PetscInt                 discrete_dimension; /* number of nodes used in DMDA discretization */
+  Mat                      *jac; /* Jacobian */
+} PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
-  PetscInt           id;/*internal identification for easy indexing*/
+typedef struct _ts_HighwayLocalSolverCtx TSHighwayLocalSolverCtx;
+
+
+struct _ts_HighwayIdenfication {
+  
   PetscInt           district=-1; /* district ID (e.g. in CA, comes from Caltrans)*/
   TSRoadDirection    direction;
   PetscReal          postmile=-1.0;
@@ -99,38 +112,48 @@ struct _ts_HighwayCtx{
   /*if two letters, add a trailing X (e.g. LA -> LAX)*/
   PetscInt           name_length = 0;
   char               name[TS_MAX_ROAD_NAME_LEN]=NULL;
-  
-  /* size and location data */
-  PetscReal          length=-1; /* total length of this highway */
-  PetscInt           num_entries=0;
-  TSHighwayEntryCtx* entries=NULL;
-  PetscInt           num_exits=0;
-  TSHighwayExitCtx*  exits=NULL;
-  PetscInt           num_interchanges=0;
-  TSInterchangeCtx*  interchanges=NULL;
-  PetscReal          speed_limit=-1;
-  PetscInt           num_lanes=-1;
-  /* recorded traffic data */
+} PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
+
+typedef struct _ts_HighwayIdentification TSHighwayIdentification;
+
+
+struct _ts_HighwayTrafficData {
   PetscReal          back_peak_hour=-1;
   PetscReal          back_peak_month=-1;
   PetscReal          back_aadt=-1; /* aadt = annual average daily traffic*/
   PetscReal          ahead_peak_hour=-1;
   PetscReal          ahead_peak_month=-1;
   PetscReal          ahead_aadt=-1;
+} PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
+
+typedef struct _ts_HighwayTrafficData TSHighwayTrafficData;
+
+
+struct _ts_HighwayCtx{
+
+  PetscInt                 id;/*internal identification for easy indexing*/
+  
+  TSHighwayIdentification* id_info;
+
+  /* size and location data */
+  PetscReal                length=-1; /* total length of this highway */
+  PetscInt                 num_entries=0;
+  TSHighwayEntryCtx*       entries=NULL;
+  PetscInt                 num_exits=0;
+  TSHighwayExitCtx*        exits=NULL;
+  PetscInt                 num_interchanges=0;
+  TSInterchangeCtx*        interchanges=NULL;
+  PetscReal                speed_limit=-1;
+  PetscInt                 num_lanes=-1;
+  /* recorded traffic data */
+  TSHighwayTrafficData*    traffic_data;
 
   /* simulation data */
-  TSHighwayTrafficBoundary boundary;
-  Vec                      x;
-  TSHighwayTrafficField    *old_rho_v;
-  PetscReal                dt;
-  DM                       da;
-  PetscInt                 discrete_dimension; /* number of nodes used in DMDA discretization */
-  Mat                      *jac; /* Jacobian */
+  TSHighwayLocalSolverCtx* solver_ctx;
+
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _ts_HighwayCtx* TSHighway;
-
-typedef enum {TS_LINEAR, TS_GENERALIZED_LOGISTIC, TS_DECIDE} TSSpeedDensityModel;
 
 extern PetscErrorCode HighwayCreate(MPI_Comm, TSHighway*);
 
