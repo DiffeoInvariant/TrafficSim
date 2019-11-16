@@ -69,9 +69,9 @@ extern PetscErrorCode HighwayExitCreate(TSHighwayExitCtx* exit, PetscReal postmi
 
 struct _ts_InterchangeCtx{
 
-  PetscInt  exit_road_id; /* id for the road you're leaving */
-  PetscInt  entry_road_id; /* id for the road you're entering */
-  PetscReal postmile; /* posted mile marker location*/
+  PetscInt  exit_road_id=-1; /* id for the road you're leaving */
+  PetscInt  entry_road_id=-1; /* id for the road you're entering */
+  PetscReal postmile=-1.0; /* posted mile marker location*/
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _ts_InterchangeCtx TSInterchangeCtx;
@@ -80,12 +80,12 @@ typedef struct _ts_InterchangeCtx TSInterchangeCtx;
 typedef struct {
   PetscReal   rho; /* traffic density */
   PetscReal   v; /* traffic speed */
-} HighwayTrafficField;
+} TSHighwayTrafficField;
 
 typedef struct {
   PetscReal rho_ahead, v_ahead; /* boundary values ahead */
   PetscReal rho_behind, v_behind; /* boundary values behind */
-} HighwayTrafficBoundary;
+} TSHighwayTrafficBoundary;
 
 struct _ts_HighwayCtx{
 
@@ -119,12 +119,13 @@ struct _ts_HighwayCtx{
   PetscReal          ahead_aadt=-1;
 
   /* simulation data */
-  Vec                  rho;
-  HighwayTrafficField  *old_rho;
-  PetscReal            dt;
-  DM                   da;
-  PetscInt             discrete_dimension; /* number of nodes used in DMDA discretization */
-  Mat                  *jac; /* Jacobian */
+  TSHighwayTrafficBoundary boundary;
+  Vec                      x;
+  TSHighwayTrafficField    *old_rho_v;
+  PetscReal                dt;
+  DM                       da;
+  PetscInt                 discrete_dimension; /* number of nodes used in DMDA discretization */
+  Mat                      *jac; /* Jacobian */
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _ts_HighwayCtx* TSHighway;
@@ -135,9 +136,9 @@ extern PetscErrorCode HighwayCreate(MPI_Comm, TSHighway*);
 
 extern PetscErrorCode HighwayDestroy(MPI_Comm, TSHighway*);
 
-extern PetscErrorCode HighwayCreateJacobian(TSHighway, Mat*, Mat*[]);
+/*extern PetscErrorCode HighwayCreateJacobian(TSHighway, Mat*, Mat*[]);
 
-extern PetscErrorCode HighwayDestroyJacobian(TSHighway);
+  extern PetscErrorCode HighwayDestroyJacobian(TSHighway);*/
 
 extern PetscErrorCode HighwayComputeSpeedFromDensity(TSHighway, TSSpeedDensityModel);
 

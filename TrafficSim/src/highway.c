@@ -259,12 +259,71 @@ PetscErrorCode HighwaySetTrafficData(TSHighway highway, const PetscInt* num_entr
   
   PetscFunctionReturn(0);
 }
-        
+
+#if 0
+/*
+  HighwayCreateJacobian - create (preallocate) Jacobian matrices for a highway section (at the start, in the middle, and at the end of the segment).
+
+  Input Parameters:
+  highway - a TSHighway object
+  J_pre - array of precomputed Jacobian matrices (set to NULL if not available) to reuse. This is only to avoid unnecessary calls to malloc, the values need not be correct, or even set at all if the nonzero structure is correctly set.
+
+  Output Parameter:
+  J_out - array of three preallocated (but not computed) Jacobian matrices 
+
+ */
+/*
 	  
+PetscErrorCode HighwayCreateJacobian(TSHighway highway, Mat* J_pre, Mat* J_out[])
+{
+  PetscErrorCode ierr;
+  Mat*           J_highway;
+  PetscInt       M, rows[2], cols[2], *nz;
+  PetscScalar    *aa;
 
-      
 
-  
+  PetscFunctionBegin;
+  if(J_pre){
+    *J_out = J_pre;
+    highway->jac = J_pre;
+    ierr = PetscObjectReference((PetscObject)(J_pre[0])); CHKERRQ(ierr);
+    PetscFunctionReturn(0);
+  }
+
+  ierr = PetscMalloc1(3, &J_highway);CHKERRQ(ierr);
+*/
+  /* this highway segment's Jacobian */
+				     /*
+  ierr = DMSetMatrixStructureOnly(highway->da, PETSC_TRUE);CHKERRQ(ierr);
+  ierr = DMCreateMatrix(highway->da, &J_highway[0]);CHKERRQ(ierr);
+  ierr = DMSetMatrixStructureOnly(highway->da, PETSC_FALSE);CHKERRQ(ierr);
+				     */
+  /* Jacobian for ahead highway-highway junction (ahead of monitoring station).
+
+     The variables to be solved for are rho and v, so the Jacobian structure is
+     [ [1  dv/drho]
+       [drho/dv r ] ]
+   */
+				     /*
+  ierr = MatGetSize(J_highway[0], &M, NULL);CHKERRQ(ierr);
+  ierr = PetscCalloc2(M, &nz, 4, &aa);CHKERRQ(ierr);
+
+  ierr = MatCreate(PETSC_COMM_SELF, &J_highway[1]);CHKERRQ(ierr);
+  ierr = MatSetSizes(J_highway[1], PETSC_DECIDE, PETSC_DECIDE, M, 2);CHKERRQ(ierr);
+  ierr = MatSetFromOptions(J_highway[1]);CHKERRQ(ierr);
+  ierr = MatSetOption(J_highway[1], MAT_STRUCTURE_ONLY, PETSC_TRUE);CHKERRQ(ierr);
+				     */
+  /* nonzero structure by row */
+				     /*
+  nz[0] = 2;
+  nz[1] = 2;
+
+
+  PetscFunctionReturn(0);
+}
+				     */
+
+#endif
 
   
 
