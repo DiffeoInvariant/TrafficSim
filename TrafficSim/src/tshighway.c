@@ -21,6 +21,42 @@ PetscErrorCode HighwayCreate(MPI_Comm comm, TSHighway* highway)
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode HighwayDestroy(TSHighway highway){
+  PetscErrorCode ierr;
+  PetscInt       id;
+  TSExitParams   *epars;
+  PetscFunctionBegin;
+
+  ierr = PetscFree(highway->id_info);CHKERRQ(ierr);
+
+  if(highway->entries){
+    for(id = 0; id < highway->num_entries; ++id){
+      ierr = PetscFree((highway->entries[id]).arrival_params);CHKERRQ(ierr);
+    }
+    ierr = PetscFree(highway->entries);CHKERRQ(ierr);
+  }
+
+  if(highway->exits){
+    for(id = 0; id < highway->num_exits; ++id){
+      ierr = PetscFree(highway->exits[id].prob_params.params.params);CHKERRQ(ierr);
+    }
+    ierr = PetscFree(highway->exits);CHKERRQ(ierr);
+  }
+  
+  ierr = PetscFree(highway->interchanges);CHKERRQ(ierr);
+  ierr = PetscFree(highway->traffic_data);CHKERRQ(ierr);
+
+  if(highway->solver_ctx){
+    ierr = PetscFree(highway->solver_ctx->old_rho_v_q);CHKERRQ(ierr);
+    ierr = MatDestroy(highway->solver_ctx->jac);CHKERRQ(ierr);
+  }
+  
+  ierr = PetscFree(highway->solver_ctx);CHKERRQ(ierr);
+
+  ierr = PetscFree(highway);CHKERRQ(ierr);
+
+  PetscFunctionReturn(0);
+}
 
 /* 
    HighwaySetIdentification - Set identifying information for a TSHighway

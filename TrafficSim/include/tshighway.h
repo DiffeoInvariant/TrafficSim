@@ -49,11 +49,11 @@ typedef enum {
 /* struct to hold params for multi-parameter distribution; TODO: maybe put this in the .c file? */
 struct _ts_multiparams{
   PetscInt   n;
-  PetscReal* params;
+  PetscReal* params=NULL;
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef union {
-  PetscReal p;
+  PetscReal p=0.0;
   struct _ts_multiparams params;
 } TSExitParams;
   
@@ -81,6 +81,7 @@ typedef struct _ts_InterchangeCtx TSInterchangeCtx;
 typedef struct {
   PetscReal   rho; /* traffic density */
   PetscReal   v; /* traffic speed */
+  PetscReal   q; /* traffix flux, q = rho * v */
 } TSHighwayTrafficField;
 
 typedef struct {
@@ -91,11 +92,11 @@ typedef struct {
 struct _ts_HighwayLocalSolverCtx {
   TSHighwayTrafficBoundary bc;
   Vec                      x;
-  TSHighwayTrafficField    *old_rho_v;
+  TSHighwayTrafficField    *old_rho_v_q;
   PetscReal                dt;
   DM                       da;
   PetscInt                 discrete_dimension; /* number of nodes used in DMDA discretization */
-  Mat                      *jac; /* Jacobian */
+  Mat                      jac; /* Jacobian */
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _ts_HighwayLocalSolverCtx TSHighwayLocalSolverCtx;
@@ -107,11 +108,11 @@ struct _ts_HighwayIdenfication {
   TSRoadDirection    direction;
   PetscReal          postmile=-1.0;
   PetscInt           city_name_length = 0;
-  char               city_name[TS_MAX_CITY_NAME_LEN]=NULL;
-  char               county[TS_COUNTY_NAME_LEN]=NULL;
+  char               city_name[TS_MAX_CITY_NAME_LEN];
+  char               county[TS_COUNTY_NAME_LEN];
   /*if two letters, add a trailing X (e.g. LA -> LAX)*/
   PetscInt           name_length = 0;
-  char               name[TS_MAX_ROAD_NAME_LEN]=NULL;
+  char               name[TS_MAX_ROAD_NAME_LEN];
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _ts_HighwayIdentification TSHighwayIdentification;
@@ -168,6 +169,9 @@ extern PetscErrorCode HighwayComputeSpeedFromDensity(TSHighway, TSSpeedDensityMo
 extern PetscErrorCode HighwayGetCurrentDensity(TSHighway, PetscInt, PetscReal*, TSSpeedDensityModel);
 
 extern PetscErrorCode HighwayGetCurrentSpeed(TSHighway, PetscInt, PetscReal*, TSSpeedDensityModel);
+
+/* flux is speed times density, and can be integrated and compared to counts */
+extern PetscErrorCode HighwayGetCurrentFlux(TSHighway, PetscInt, PetscReal*, TSSpeedDensityModel);
 
 extern PetscErrorCode HighwaySetIdentification(TSHighway, const PetscInt*, const TSRoadDirection*,
 					       const PetscReal*, const PetscReal*, const PetscInt*,

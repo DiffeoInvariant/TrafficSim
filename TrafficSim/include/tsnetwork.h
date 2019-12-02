@@ -3,10 +3,11 @@
 
 #include <petscsnes.h>
 #include <petscdmnetwork.h>
+#include <petscts.h>
 #include <mpi.h>
 #include "tshighway.h"
 
-
+typedef enum {TS_LINEAR_STEADY_STATE, TS_NONLINEAR_STEADY_STATE, TS_TIME_STEP} TSProblemType;
 
 struct _ts_HighwayVertex {
   /* set these to NULL if not applicable for this vertex */
@@ -48,7 +49,44 @@ struct _ts_Network {
 
 typedef struct _ts_Network *TSNetwork;
 
-extern PetscErrorCode TrafficNetworkCreate(TSNetwork*);
+extern PetscErrorCode TSNetworkCreate(MPI_Comm,TSNetwork*);
+
+extern PetscErrorCode TSNetworkDestroy(TSNetwork);
+
+extern PetscErrorCode TSNetworkSetHighways(TSNetwork,PetscInt,TSHighway,
+						PetscInt,TSHighwayVertex,
+						PetscInt[]);
+
+extern PetscErrorCode TSNetworkSetUp(TSNetwork);
+
+extern PetscErrorCode TSNetworkDistribute(TSNetwork);
+
+extern PetscErrorCode TSNetworkSetSNES(TSNetwork, SNES);
+
+extern PetscErrorCode TSNetworkGetSNES(TSNetwork, SNES);
+
+extern PetscErrorCode TSNetworkSetTS(TSNetwork, TS);
+
+extern PetscErrorCode TSNetworkGetTS(TSNetwork, TS);
+
+extern PetscErrorCode TSNetworkGetDM(TSNetwork, DM);
+
+extern PetscErrorCode TSNetworkSetDM(TSNetwork, DM);
+
+extern PetscErrorCode TSNetworkSetMaxTime(TSNetwork, PetscReal);
+
+extern PetscErrorCode TSNetworkGetMaxTime(TSNetwork, PetscReal*);
+
+extern PetscErrorCode TSNetworkSetMaxTimeSteps(TSNetwork, PetscInt);
+
+extern PetscErrorCode TSNetworkGetMaxTimeSteps(TSNetwork, PetscInt*);
+
+extern PetscErrorCode TSNetworkSetProblemType(TSNetwork, TSProblemType);
+
+extern PetscErrorCode TSNetworkSolve(TSNetwork, Vec);
+
+extern PetscErrorCode TSNetworkSetFromOptions(TSNetwork);
+
 
 
 #endif

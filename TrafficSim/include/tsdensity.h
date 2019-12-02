@@ -47,7 +47,10 @@ struct _ts_DynamicExponentialDistribution {
 typedef struct _ts_DynamicExponentialDistribution TSDynamicExponentialDistribution;
 
 
-typedef enum {TS_LINEAR, TS_GENERALIZED_LOGISTIC, TS_DECIDE} TSSpeedDensityModel;
+typedef enum {TS_LINEAR, TS_GENERALIZED_LOGISTIC, TS_DEFAULT,TS_DECIDE} TSSpeedDensityModel;
 
+extern PetscErrorCode TSSpeedFromLinearDensity(PetscReal*, PetscReal, PetscReal);
+
+extern PetscErrorCode TSSpeedFromLogisticDensity(PetscReal*, PetscReal, PetscReal);
 
 #endif
