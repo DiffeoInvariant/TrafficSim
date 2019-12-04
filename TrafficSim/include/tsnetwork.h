@@ -11,10 +11,11 @@ typedef enum {TS_LINEAR_STEADY_STATE, TS_NONLINEAR_STEADY_STATE, TS_TIME_STEP} T
 
 struct _ts_HighwayVertex {
   /* set these to NULL if not applicable for this vertex */
-  TSInterchangeCtx          *intc_ctx;
-  TSHighwayEntryCtx         *entr_ctx;
-  TSHighwayExitCtx          *exit_ctx;
-  Mat                       *jac;
+  TSInterchangeCtx          *intc_ctx=NULL;
+  TSInterchangeCtx          *intc2_ctx=NULL; /* if there's a split/join */
+  TSHighwayEntryCtx         *entr_ctx=NULL;
+  TSHighwayExitCtx          *exit_ctx=NULL;
+  Mat                       *jac=NULL;
   /* Can people enter or exit the highway system here? 
      If so, what distribution does that follow? */
   TSArrivalDistributionType entry_dist=TS_NO_ARRIVAL;

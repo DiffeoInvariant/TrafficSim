@@ -72,9 +72,10 @@ PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, P
     net-> l_nedges = 8;
     net-> g_nvertices = 7;
     net-> l_nvertices = 7;
-    nentry = 7;
-    nexit = 7;
-
+    nentry = 5;
+    nexit = 5;
+    nedges = 8;
+    nvertices = 7;
     if(!rank){
       nedges = net->g_ndeges;
       nvertices = net->g_nvertices;
@@ -89,7 +90,7 @@ PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, P
       edgelist[14] = 6; edgelist[15] = 0; /* H7 */
 
       /* allocate highways and vertices, incl entries, exits, and interchanges */
-      ninterchange = nvertex;
+      ninterchange = nvertex + 2;
       ierr = PetscCalloc7(nvertices, &vertices,
 			  ninterchange, &interchanges,
 			  nentry, &entries,
@@ -106,8 +107,12 @@ PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, P
 	  interchanges[i].exit_road_id = 7;
 	  interchanges[i].entry_road_id = 0;
 	  interchanges[i].postmile = 0.0;
-	  vertices[i].intc_ctx = interchanges + i;/* pointer arithmetic */
-
+	  vertices[i].intc_ctx = interchanges;
+	  /* set for the edge too */
+	  highways[0].interchanges = interchanges;
+	  highways[7].interchanges = interchanges;
+	  highways[0].length = 10.0;
+	  
 	  entries[i].postmile = 0.0;
 	  entries[i].arrival_dist = TS_POISSON_DYNAMIC;
 	  /* the N arrival parameters for TS_POISSON_DYNAMIC are given as
@@ -126,6 +131,7 @@ PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, P
 						       have to ensure that nobody changes anybody
 						       else's arrival parameters, but eh, whatever for now).*/
 	  vertices[i].entr_ctx = entries[i];
+	  highways[i].entries = entries[i];
 	  vertices[i].arrival_dist = TS_POISSON_DYNAMIC;
 
 	  exits[i].postmile = 0.0;
@@ -141,17 +147,23 @@ PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, P
 	  epars1.n = 4;
 	  epars1.params = exit_params;
 	  exits[i].prob_params = epars1;
-	  
+	  highways[7].exits = exits;
 	  vertices[i].exit_ctx = exits[i];
+	  highways[i].num_lanes = 4;
+	  highways[i].speed_limit=70.0;
 	  break;
 	case 1:
 	  /* V1, one interchange, one exit, one entry */
 	  interchanges[i].exit_road_id = 0;
 	  interchanges[i].entry_road_id = 1;
 	  interchanges[i].postmile = 10.0;
+	  
 	  vertices[i].intc_ctx = interchanges + i;/* pointer arithmetic */
-
-	  entries[i].postmile = 0.0;
+	  highways[1].interchanges = interchanges + i;
+	  highways[1].length = 10.0;
+	  highways[0].interchanges2 = interchanges + i;
+	  
+	  entries[i].postmile = 10.0;
 	  entries[i].arrival_dist = TS_POISSON_DYNAMIC;
 	  /* the N arrival parameters for TS_POISSON_DYNAMIC are given as
 	     an array of length 2N with entries
@@ -159,12 +171,15 @@ PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, P
 	     where the ti are the times at which lambdai becomes the arrival
 	     distribution's parameter. */
 	  entries[i].num_arrival_params = 4;
+	  
 	  arrival_params[8 * i + 0] = 0.0; arrival_params[8 * i + 1] = 140.0;
 	  arrival_params[8 * i + 2] = 2.5; arrival_params[8 * i + 3] = 51.0; /* 2.5 hour morning rush hour */
 	  arrival_params[8 * i + 4] = 5.0; arrival_params[8 * i + 5] = 20.0;
 	  arrival_params[8 * i + 6] = 9.0; arrival_params[8 * i + 7] = 43.0;
 	  entries[i].arrival_params = arrival_params + 8 * i;/* hey, we're adding some pointer arithmetic to this unholy assignment protocol we're using for the arrival/exit parameters. Why? Because the universe hates you, that's why.*/
+	  
 	  vertices[i].entr_ctx = entries[i];
+	  highways[i].entries = entries[i];
 	  vertices[i].arrival_dist = TS_POISSON_DYNAMIC;
 
 	  exits[i].postmile = 10.0;
@@ -182,20 +197,211 @@ PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, P
 	  exits[i].prob_params = epars2;
 	  
 	  vertices[i].exit_ctx = exits[i];
+	  highways[0].exits = exits + i;
+	  highways[1].num_lanes = 3;
+	  highways[1].speed_limit=70.0;
+	  break;
+	case 2:
+	  /* V2, two interchanges, no entries or exits */
+	  interchanges[i].exit_road_id = 1;
+	  interchanges[i].entry_road_id = 2;
+	  interchanges[i].postmile = 20.0;
+	  interchanges[i].continue_p = 0.65;
 	  
+	  interchanges[3].exit_road_id = 1;
+	  interchanges[3].entry_road_id = 4;
+	  interchanges[3].postmile = 20.0;
+	  interchanges[3].continue_p = 0.35;
 	  
+	  vertices[i].intc_ctx = interchanges + i;/* pointer arithmetic */
+	  vertices[i].intc2_ctx = interchanges + 3;
 	  
+	  highways[2].interchanges = interchanges + 2;
+	  highways[4].interchanges = interchanges + 3;
+	  highways[1].interchanges2 = interchanges + 2;
+	  highways[1].interchanges3 = interchanges + 3;
+	  highways[2].num_lanes = 3;
+	  highways[2].speed_limit = 80.0;
+	  highways[4].num_lanes = 2;
+	  highways[4].speed_limit = 55.0;
+	  highways[2].length = 8.0;
+	  highways[4].length = 12.0;
+	  break;
+	case 3:
+	  /* V3, one interchange, one exit, one entry */
+	  interchanges[4].exit_road_id = 2;
+	  interchanges[4].entry_road_id = 3;
+	  interchanges[4].postmile = 28.0;
+	  vertices[i].intc_ctx = interchanges + 4;/* pointer arithmetic */
+	  highways[2].interchanges2 = interchanges2 = interchanges + 4;
+	  highways[3].interchanges = interchanges + 4;
+	  highways[3].length = 12.0;
+	  highways[3].num_lanes = 3;
+	  highways[3].speed_limit = 65.0;
 	  
+	  entries[2].postmile = 28.0;
+	  entries[2].arrival_dist = TS_POISSON_DYNAMIC;
+	  /* the N arrival parameters for TS_POISSON_DYNAMIC are given as
+	     an array of length 2N with entries
+	     [t0,lambda0, t1, lambda1, ..., tN-1, lambdaN-1],
+	     where the ti are the times at which lambdai becomes the arrival
+	     distribution's parameter. */
+	  entries[2].num_arrival_params = 4;
+	  arrival_params[8 * 2 + 0] = 0.0; arrival_params[8 * 2 + 1] = 10.0;
+	  arrival_params[8 * 2 + 2] = 2.5; arrival_params[8 * 2 + 3] = 1.01; /* 2.5 hour morning rush hour */
+	  arrival_params[8 * 2 + 4] = 5.0; arrival_params[8 * 2 + 5] = 9.0;
+	  arrival_params[8 * 2 + 6] = 9.0; arrival_params[8 * 2 + 7] = 3.0;
+	  entries[2].arrival_params = arrival_params + 8 * 2;/* hey, we're adding some pointer arithmetic to this unholy assignment protocol we're using for the arrival/exit parameters. Why? Because the universe hates you, that's why.*/
+	  vertices[i].entr_ctx = entries[2];
+	  vertices[i].arrival_dist = TS_POISSON_DYNAMIC;
+	  highways[3].entries = entries + 2;
+	  
+	  exits[2].postmile = 28.0;
+	  exits[2].type = TS_DYNAMIC_EXIT;
+	  /* same deal as with arrival params, but the odd-numbered-indexed values are probabilities
+	     between 0 and 1 (inclusive) that any given car will leave the highway on this exit 
+	     in the given timeframe.*/
+	  vertices[i].exit_dist = TS_DYNAMIC_EXIT;
+	  exit_params[8 * 2 + 0] = 0.0; exit_params[8 * 2 + 1] = 0.08;
+	  exit_params[8 * 2 + 2] = 2.5; exit_params[8 * 2 + 3] = 0.005;
+	  exit_params[8 * 2 + 4] = 5.0; exit_params[8 * 2 + 5] = 0.24;
+	  exit_params[8 * 2 + 6] = 9.0; exit_params[8 * 2 + 7] = 0.04;
+	  epars3.n = 4;
+	  epars3.params = exit_params + 8 * 2;
+	  exits[2].prob_params = epars3;
+	  highways[2].exits = exits + 2;
+	  vertices[i].exit_ctx = exits[2];
+	  break;
+	 case 4:
+	  /* V4, one interchange, one exit, one entry */
+	  interchanges[5].exit_road_id = 3;
+	  interchanges[5].entry_road_id = 5;
+	  interchanges[5].postmile = 40.0;
+	  vertices[i].intc_ctx = interchanges + 5;/* pointer arithmetic */
+	  highways[3].interchanges2 = interchanges + 5;
+	  highways[5].interchanges = interchanges;
+	  highways[5].length = 8.0;
+	  highways[5].num_lanes = 3.0;
+	  highways[5].speed_limit = 65.0;
+	  
+	  entries[3].postmile = 40.0;
+	  entries[3].arrival_dist = TS_POISSON_DYNAMIC;
+	  /* the N arrival parameters for TS_POISSON_DYNAMIC are given as
+	     an array of length 2N with entries
+	     [t0,lambda0, t1, lambda1, ..., tN-1, lambdaN-1],
+	     where the ti are the times at which lambdai becomes the arrival
+	     distribution's parameter. */
+	  entries[3].num_arrival_params = 4;
+	  arrival_params[8 * 3 + 0] = 0.0; arrival_params[8 * 3 + 1] = 10.0;
+	  arrival_params[8 * 3 + 2] = 2.5; arrival_params[8 * 3 + 3] = 1.01; /* 2.5 hour morning rush hour */
+	  arrival_params[8 * 3 + 4] = 5.0; arrival_params[8 * 3 + 5] = 9.0;
+	  arrival_params[8 * 3 + 6] = 9.0; arrival_params[8 * 3 + 7] = 3.0;
+	  entries[3].arrival_params = arrival_params + 8 * 3;/* hey, we're adding some pointer arithmetic to this unholy assignment protocol we're using for the arrival/exit parameters. Why? Because the universe hates you, that's why.*/
+	  vertices[i].entr_ctx = entries[3];
+	  highways[5].entries = entries + 3;
+	  vertices[i].arrival_dist = TS_POISSON_DYNAMIC;
+
+	  exits[3].postmile = 40.0;
+	  exits[3].type = TS_DYNAMIC_EXIT;
+	  /* same deal as with arrival params, but the odd-numbered-indexed values are probabilities
+	     between 0 and 1 (inclusive) that any given car will leave the highway on this exit 
+	     in the given timeframe.*/
+	  vertices[i].exit_dist = TS_DYNAMIC_EXIT;
+	  exit_params[8 * 3 + 0] = 0.0; exit_params[8 * 3 + 1] = 0.08;
+	  exit_params[8 * 3 + 2] = 2.5; exit_params[8 * 3 + 3] = 0.005;
+	  exit_params[8 * 3 + 4] = 5.0; exit_params[8 * 3 + 5] = 0.24;
+	  exit_params[8 * 3 + 6] = 9.0; exit_params[8 * 3 + 7] = 0.04;
+	  epars4.n = 4;
+	  epars4.params = exit_params + 8 * 3;
+	  exits[3].prob_params = epars4;
+	  highways[3].exits = exits + 3;
+	  vertices[i].exit_ctx = exits[3];
+	  break;
+	case 5:
+	/* V5, two interchanges, no exits or entries */
+	  interchanges[6].exit_road_id = 6;
+	  interchanges[6].entry_road_id = 5;
+	  interchanges[6].postmile = 48.0;
+	  vertices[i].intc_ctx = interchanges + 6;/* pointer arithmetic */
+	  highways[5].interchanges2 = interchanges + 6;
+
+	  interchanges[7].exit_road_id = 6;
+	  interchanges[7].entry_road_id = 4;
+	  interchanges[7].postmile = 48.0;
+	  vertices[i].intc2_ctx = interchanges + 7;/* pointer arithmetic */
+	  highways[4].interchanges2 = interchanges + 7;
+	  highways[6].interchanges = interchanges + 6;
+	  highways[6].interchanges2 = interchanges + 7;
+	  highways[6].num_lanes = 3;
+	  highways[6].length = 20.0;
+	  highways[6].speed_limit = 65.0
+	  break;
+	 case 6:
+	  /* V6, one interchange, one exit, one entry */
+	  interchanges[8].exit_road_id = 3;
+	  interchanges[8].entry_road_id = 5;
+	  interchanges[8].postmile = 68.0;
+	  vertices[i].intc_ctx = interchanges + 8;/* pointer arithmetic */
+	  highways[7].interchanges = interchanges + 8;
+	  highways[7].num_lanes = 4;
+	  highways[7].length = 12.0;
+	  
+	  entries[4].postmile = 68.0;
+	  entries[4].arrival_dist = TS_POISSON_DYNAMIC;
+	  /* the N arrival parameters for TS_POISSON_DYNAMIC are given as
+	     an array of length 2N with entries
+	     [t0,lambda0, t1, lambda1, ..., tN-1, lambdaN-1],
+	     where the ti are the times at which lambdai becomes the arrival
+	     distribution's parameter. */
+	  entries[4].num_arrival_params = 4;
+	  arrival_params[8 * 4 + 0] = 0.0; arrival_params[8 * 4 + 1] = 10.0;
+	  arrival_params[8 * 4 + 2] = 2.5; arrival_params[8 * 4 + 3] = 1.01; /* 2.5 hour morning rush hour */
+	  arrival_params[8 * 4 + 4] = 5.0; arrival_params[8 * 4 + 5] = 9.0;
+	  arrival_params[8 * 4 + 6] = 9.0; arrival_params[8 * 4 + 7] = 3.0;
+	  entries[4].arrival_params = arrival_params + 8 * 3;/* hey, we're adding some pointer arithmetic to this unholy assignment protocol we're using for the arrival/exit parameters. Why? Because the universe hates you, that's why.*/
+	  vertices[i].entr_ctx = entries[4];
+	  vertices[i].arrival_dist = TS_POISSON_DYNAMIC;
+	  highways[7].entries = entries + 4;
+	  highways[7].exits = exits;
+	  exits[4].postmile = 68.0;
+	  exits[4].type = TS_DYNAMIC_EXIT;
+	  /* same deal as with arrival params, but the odd-numbered-indexed values are probabilities
+	     between 0 and 1 (inclusive) that any given car will leave the highway on this exit 
+	     in the given timeframe.*/
+	  vertices[i].exit_dist = TS_DYNAMIC_EXIT;
+	  exit_params[8 * 4 + 0] = 0.0; exit_params[8 * 4 + 1] = 0.08;
+	  exit_params[8 * 4 + 2] = 2.5; exit_params[8 * 4 + 3] = 0.005;
+	  exit_params[8 * 4 + 4] = 5.0; exit_params[8 * 4 + 5] = 0.24;
+	  exit_params[8 * 4 + 6] = 9.0; exit_params[8 * 4 + 7] = 0.04;
+	  epars5.n = 4;
+	  epars5.params = exit_params + 8 * 4;
+	  exits[4].prob_params = epars5;
+
+	  highways[6].exits = exits + 4;
+	  vertices[i].exit_ctx = exits[4];
+	  break;
+
+        default:
+	  SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_WRONG,"Wrong value of i in TSNetworkCreateWithStructure (from line 385).");
 
 	}
-      }
-	
-    
-    
+      }/*end vertex for*/
+     }/*if(!rank)*/
+    /* global highway ids */
+
+
+  default:
+         SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_WRONG,"Wrong value of i in TSNetworkCreateWithStructure (from line 394).");
+    } /* end network case switch */
+ 
+  for(i=0; i < nedges; ++i){
+    highways[i].id = i;
+  }
 
 
 
 
-  } /* end switch */
+  PetscFunctionReturn(0);
+}
   
   

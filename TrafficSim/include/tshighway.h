@@ -77,6 +77,8 @@ struct _ts_InterchangeCtx{
   PetscInt  exit_road_id=-1; /* id for the road you're leaving */
   PetscInt  entry_road_id=-1; /* id for the road you're entering */
   PetscReal postmile=-1.0; /* posted mile marker location*/
+  PetscReal continue_p = 1.0; /* probability that a car will go through this interchange,
+				 only relevant if this interchange is part of a split vertex*/
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _ts_InterchangeCtx TSInterchangeCtx;
@@ -146,8 +148,10 @@ struct _ts_HighwayCtx{
   TSHighwayEntryCtx*       entries=NULL;
   PetscInt                 num_exits=0;
   TSHighwayExitCtx*        exits=NULL;
-  PetscInt                 num_interchanges=0;
+  PetscInt                 num_interchanges=1;/* num interchanges per pointer below (if allocated)*/
   TSInterchangeCtx*        interchanges=NULL;
+  TSInterchangeCtx*        interchanges2=NULL;
+  TSInterchangeCtx*        interchanges3=NULL;
   PetscReal                speed_limit=-1;
   PetscInt                 num_lanes=-1;
   /* recorded traffic data */
