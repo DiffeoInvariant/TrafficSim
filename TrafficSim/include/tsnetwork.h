@@ -19,7 +19,8 @@ struct _ts_HighwayVertex {
      If so, what distribution does that follow? */
   TSArrivalDistributionType entry_dist=TS_NO_ARRIVAL;
   TSExitType                exit_dist=TS_NO_EXIT;
-
+  
+  PetscInt                  id;
   PetscInt                  is_boundary=0; /* 0 = not a boundary vertex,
 					      1 = boundary vertex, cars can
 					      enter here, but no travel
@@ -50,6 +51,8 @@ struct _ts_Network {
 typedef struct _ts_Network *TSNetwork;
 
 extern PetscErrorCode TSNetworkCreate(MPI_Comm,TSNetwork*);
+
+extern PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm, TSNetwork*, PetscInt, const char*);
 
 extern PetscErrorCode TSNetworkDestroy(TSNetwork);
 

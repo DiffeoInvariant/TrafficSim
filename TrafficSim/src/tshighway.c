@@ -376,8 +376,73 @@ PetscErrorCode HighwayCreateJacobian(TSHighway highway, Mat* J_pre, Mat* J_out[]
 
   PetscFunctionReturn(0);
 }
-				     */
 
+
+				     */
+extern PetscErrorCode HighwayExitCreate(TSHighwayExitCtx** exit, PetscReal postmile, TSExitType exit_t, TSExitParams* params)
+{
+  PetscErrorCode ierr;
+  PetscFunctionBegin;
+  ierr = PetscNew(exit);CHKERRQ(ierr);
+  (*exit)->postmile = postmile;
+  (*exit)->type = exit_t;
+  if(params){
+    (*exit)->params = *params;
+  }
+  PetscFunctionReturn(0);
+}
+
+extern PetscErrorCode HighwayExitDestroy(TSHighwayExitCtx* exit)
+{
+  PetscErrorCode ierr;
+  PetscFunctionBegin;
+  ierr = PetscFree(exit);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+extern PetscErrorCode HighwayExitGetParams(TSHighwayExitCtx* exit, PetscInt* nparam, PetscReal* params)
+{
+  PetscFunctionBegin;
+  *nparam = exit->prob_params.n;
+  params = exit->prob_params.params;
+  PetscFunctionReturn(0);
+}
+
+extern PetscErrorCode HighwayExitSetParams(TSHighwayExitCtx* exit, PetscInt nparam, PetscReal* params)
+{
+  PetscFunctionBegin;
+  exit->prob_params.n = nparam;
+  exit->prob_params.params = params;
+  PetscFunctionReturn(0);
+}
+  
+  
+  
+extern PetscErrorCode HighwayEntryCreate(TSHighwayEntryCtx** entry, const PetscReal postmile,
+					  const TSArrivalDistributionType arrival_dist_t, PetscInt* n_params,
+					  PetscReal* params)
+ {
+   PetscErrorCode ierr;
+   PetscFunctionBegin;
+   ierr = PetscNew(entry);CHKERRQ(ierr);
+   (*entry)->postmile = postmile;
+   (*entry)->arrival_dist = arrival_dist_t;
+   if(n_params && params){
+     (*entry)->num_arrival_params = *n_params;
+     (*entry)->arrival_params = params;
+   }
+
+   PetscFunctionReturn(0);
+ }
+
+ extern PetscErrorCode HighwayEntryDestroy(TSHighwayEntryCtx* entry)
+ {
+   PetscErrorCode ierr;
+   PetscFunctionBegin;
+   ierr = PetscFree(entry);CHKERRQ(ierr);
+   PetscFunctionReturn(0);
+ }
+   
 #endif
 
   

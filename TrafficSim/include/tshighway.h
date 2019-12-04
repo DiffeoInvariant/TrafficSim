@@ -33,12 +33,13 @@ struct _ts_HighwayEntryCtx{
 
 typedef struct _ts_HighwayEntryCtx TSHighwayEntryCtx;
 
-extern PetscErrorCode HighwayEntryCreate(TSHighwayEntryCtx* entry, const PetscReal postmile,
+extern PetscErrorCode HighwayEntryCreate(TSHighwayEntryCtx** entry, const PetscReal postmile,
 				         const TSArrivalDistributionType arrival_dist_t,
-				         const PetscInt* n_params, const PetscReal* params);
+				         PetscInt* n_params, PetscReal* params);
 
-extern PetscErrorCode StaticPoissonHighwayEntryCreate(TSHighwayEntryCtx*, const PetscReal, const PetscReal*);
+extern PetscErrorCode StaticPoissonHighwayEntryCreate(TSHighwayEntryCtx**, const PetscReal, const PetscReal*);
 
+extern PetscErrorCode HighwayEntryDestroy(TSHighwayEntryCtx*);
 
 typedef enum {
 	      TS_NO_EXIT,
@@ -52,10 +53,7 @@ struct _ts_multiparams{
   PetscReal* params=NULL;
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
-typedef union {
-  PetscReal p=0.0;
-  struct _ts_multiparams params;
-} TSExitParams;
+typedef struct _ts_multiparams TSExitParams;
   
 struct _ts_HighwayExitCtx{
   PetscReal    postmile;
@@ -65,8 +63,14 @@ struct _ts_HighwayExitCtx{
 
 typedef struct _ts_HighwayExitCtx TSHighwayExitCtx;
 
-extern PetscErrorCode HighwayExitCreate(TSHighwayExitCtx* exit, PetscReal postmile,
+extern PetscErrorCode HighwayExitCreate(TSHighwayExitCtx** exit, PetscReal postmile,
 				        TSExitType exit_t, TSExitParams* params);
+
+extern PetscErrorCode HighwayExitDestroy(TSHighwayExitCtx*);
+
+extern PetscErrorCode HighwayExitGetParams(TSHighwayExitCtx*, PetscInt*, PetscReal*);
+
+extern PetscErrorCode HighwayExitSetParams(TSHighwayExitCtx* exit, PetscInt nparam, PetscReal* params);
 
 struct _ts_InterchangeCtx{
 
