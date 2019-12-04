@@ -40,6 +40,7 @@ PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, P
   TSRoadDirection    direction;
   PetscReal          speed_lim, *arrival_params=NULL, *exit_params=NULL;
   TSExitParams       epars1, epars2, epars3, epars4, epars5;
+  PetscBool          ts_distribute;
 
   PetscFunctionBegin;
 
@@ -398,7 +399,15 @@ PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, P
     highways[i].id = i;
   }
 
+  *network = net;
+   net->g_nedges = nedges;
+   net->g_nvertices = nvertices;
 
+   ierr = PetscOptionsGetBool(NULL, NULL, "-ts_distribute", &ts_distribute, NULL);CHKERRQ(ierr);
+   if(ts_distribute){
+     ierr = TSNetworkDistribute(comm, net);CHKERRQ(ierr);
+   }
+     
 
 
   PetscFunctionReturn(0);

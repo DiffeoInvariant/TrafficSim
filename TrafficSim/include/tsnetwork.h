@@ -55,6 +55,8 @@ extern PetscErrorCode TSNetworkCreate(MPI_Comm,TSNetwork*);
 
 extern PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm, TSNetwork*, PetscInt, const char*);
 
+extern PetscErrorCode TSNetworkDistribute(MPI_Comm, TSNetwork);
+
 extern PetscErrorCode TSNetworkDestroy(TSNetwork);
 
 extern PetscErrorCode TSNetworkSetHighways(TSNetwork,PetscInt,TSHighway,
