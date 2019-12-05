@@ -25,6 +25,84 @@ PetscErrorCode TSNetworkDestroy(TSNetwork network){
   PetscFunctionReturn(0);
 }
 
+
+PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network)
+{
+  PetscErrorCode ierr;
+  PetscMPIInt    rank, size, tag=0;
+  PetscInt       i, e, v, l_nedges, l_nvertices, g_nedges, g_nvertices, estart, eend, tag;
+  PetscInt       *eowners, *edgelist = network->edgelist, *nvtx=NULL, *vtx_done=NULL;
+
+  PetscFunctionBegin;
+  ierr = MPI_Comm_rank(comm, &rank);CHKERRQ(ierr);
+  ierr = MPI_Comm_size(comm, &size);CHKERRQ(ierr);
+
+  g_ndeges = network->l_nedges;
+  g_nvertices = network->l_nvertices;
+  /* everybody knows the number of local and global edges (and we store extra edges on rank 0) */
+  ierr = MPI_Bcast(&g_nedges, 1, MPIU_INT, 0, comm);CHKERRQ(ierr);
+  l_nedges = g_nedges/size;
+  if(!rank){
+    l_nedges += g_nedges - size * (g_nedges/size);
+  }
+  network->g_nedges = g_nedges;
+  network->l_nedges = l_ndeges;
+
+  ierr = PetscCalloc3(size+1, &eowners, size, &nvtx, g_nvertices, &vtx_done);CHKERRQ(ierr);
+  /*gather the number of local edges into eowners*/
+  ierr = MPI_Allgather(&l_nedges, 1, MPIU_INT, eowners+1, 1, MPIU_INT, PETSC_COMM_WORLD);CHKERRQ(ierr);
+
+  eowners[0] = 0;
+  for(i=2; i <= size; ++i){
+    eowners[i] += eowners[i-1];
+  }
+  /*get local edge range */
+  estart = eowners[rank];
+  eend = eowners[rank+1];
+  /* distribute edgelist */
+  if(!rank){
+    for(i=1; i < size; ++i){
+      ierr = MPI_Send(edgelist + 2 * eowners[i], 2 * (eowners[i+1] - eowners[i]),
+		      MPIU_INT, i, tag, comm);CHKERRQ(ierr);
+    }
+  } else {
+    MPI_Status status;
+    ierr = PetscMalloc1(2*(eend-estart), &edgelist);CHKERRQ(ierr);
+    ierr = MPI_Recv(edgelist, 2*(eend-estart), MPIU_INT, 0, tag, comm, &status);CHKERRQ(ierr);
+  }
+
+  network->edgelist = edgelist;
+  /* compute global and local number of non-ghost vertices for each process (and send to everybody)*/
+  if(!rank){
+    for(i=0; i < size; ++i){
+      for(e=eowners[i]; e < eowners[i+1]; ++e){
+	v = edgelist[2*e];
+	if(!vtx_done[v]){
+	  ++(nvtx[i]);
+	  vtx_done[v] = 1;
+	}
+	v = edgelist[2*e+1];
+	if(!vtx_done[v]){
+	  ++(nvtx[i]);
+	  vtx_done[v] = 1;
+	}
+      }/*end for e*/
+    }/*end for i*/
+  }
+  /*send it out*/
+  ierr = MPI_Bcast(&g_nvertices, 1, MPIU_INT, 0, PETSC_COMM_WORLD);CHKERRQ(ierr);
+  ierr = MPI_Scatter(nvtx, 1, MPIU_INT, &l_nvertices, 1, MPIU_INT, 0, PETSC_COMM_WORLD);CHKERRQ(ierr);
+  ierr = PetscFree3(eowners, nvtx, vtx_done);CHKERRQ(ierr);
+
+  net->g_nvertices = g_nvertices;
+  net->l_nvertices = l_nvertices;
+
+  PetscFunctionReturn(0);
+}
+
+
+
+
 PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, PetscInt network_case, const char* filename)
 {
   PetscErrorCode     ierr;
@@ -387,6 +465,9 @@ PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, P
 
 	}
       }/*end vertex for*/
+      net->highways = highways;
+      net->vertices = vertices;
+      
      }/*if(!rank)*/
     /* global highway ids */
 
@@ -401,6 +482,10 @@ PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, P
 
   *network = net;
    net->g_nedges = nedges;
+   if(!rank){
+     net->l_nedges = nedges;
+     net->l_nvertices = nvertices;
+   }
    net->g_nvertices = nvertices;
 
    ierr = PetscOptionsGetBool(NULL, NULL, "-ts_distribute", &ts_distribute, NULL);CHKERRQ(ierr);

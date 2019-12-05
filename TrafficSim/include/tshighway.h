@@ -95,15 +95,6 @@ typedef struct {
   PetscReal rho_behind, v_behind; /* boundary values behind */
 } TSHighwayTrafficBoundary;
 
-struct _ts_HighwayLocalSolverCtx {
-  TSHighwayTrafficBoundary bc;
-  Vec                      x;
-  TSHighwayTrafficField    *old_rho_v_q;
-  PetscReal                dt;
-  DM                       da;
-  PetscInt                 discrete_dimension; /* number of nodes used in DMDA discretization */
-  Mat                      jac; /* Jacobian */
-} PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _ts_HighwayLocalSolverCtx TSHighwayLocalSolverCtx;
 
@@ -158,7 +149,13 @@ struct _ts_HighwayCtx{
   TSHighwayTrafficData*    traffic_data;
 
   /* simulation data */
-  TSHighwayLocalSolverCtx* solver_ctx;
+  TSHighwayTrafficBoundary bc;
+  Vec                      x;
+  TSHighwayTrafficField    *old_rho_v_q;
+  PetscReal                dt;
+  DM                       da;
+  PetscInt                 discrete_dimension; /* number of nodes used in DMDA discretization */
+  Mat                      jac; /* Jacobian */
 
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
