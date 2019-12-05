@@ -87,7 +87,7 @@ typedef struct _ts_InterchangeCtx TSInterchangeCtx;
 typedef struct {
   PetscReal   rho; /* traffic density */
   PetscReal   v; /* traffic speed */
-  PetscReal   q; /* traffix flux, q = rho * v */
+  /*PetscReal   q;  traffix flux, q = rho * v */
 } TSHighwayTrafficField;
 
 typedef struct {

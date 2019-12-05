@@ -40,6 +40,8 @@ struct _ts_Network {
   PetscInt        l_nedges, l_nvertices; /* local num of edges and vertices */
   PetscInt        g_nedges, g_nvertices; /* global num of edges and vertices */
 
+  PetscInt        highway_key, vertex_key;
+
   PetscInt*       edgelist;/*local edge list */
   PetscInt        g_discrete_dimension, l_discrete_dimension; /* number of global and local
 							   nodes used in DMDA discretization */
@@ -53,7 +55,7 @@ typedef struct _ts_Network *TSNetwork;
 
 extern PetscErrorCode TSNetworkCreate(MPI_Comm,TSNetwork*);
 
-extern PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm, TSNetwork*, PetscInt, const char*);
+extern PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm, TSNetwork*, DM, PetscInt, const char*);
 
 extern PetscErrorCode TSNetworkDistribute(MPI_Comm, TSNetwork);
 
@@ -64,8 +66,6 @@ extern PetscErrorCode TSNetworkSetHighways(TSNetwork,PetscInt,TSHighway,
 						PetscInt[]);
 
 extern PetscErrorCode TSNetworkSetUp(TSNetwork);
-
-extern PetscErrorCode TSNetworkDistribute(TSNetwork);
 
 extern PetscErrorCode TSNetworkSetSNES(TSNetwork, SNES);
 

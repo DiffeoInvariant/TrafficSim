@@ -29,9 +29,12 @@ PetscErrorCode TSNetworkDestroy(TSNetwork network){
 PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network)
 {
   PetscErrorCode ierr;
+  DM             netdm;
   PetscMPIInt    rank, size, tag=0;
-  PetscInt       i, e, v, l_nedges, l_nvertices, g_nedges, g_nvertices, estart, eend, tag;
-  PetscInt       *eowners, *edgelist = network->edgelist, *nvtx=NULL, *vtx_done=NULL;
+  PetscInt       i, e, v, l_nedges, l_nvertices, g_nedges, g_nvertices, estart, eend, vstart, vend, tag;
+  PetscInt       *eowners, *edgelists[1]=NULL, *edgelist = network->edgelist, *nvtx=NULL, *vtx_done=NULL;
+  TSHighway       highways=NULL;
+  TSHighwayVertex vertices=NULL;
 
   PetscFunctionBegin;
   ierr = MPI_Comm_rank(comm, &rank);CHKERRQ(ierr);
@@ -94,16 +97,38 @@ PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network)
   ierr = MPI_Scatter(nvtx, 1, MPIU_INT, &l_nvertices, 1, MPIU_INT, 0, PETSC_COMM_WORLD);CHKERRQ(ierr);
   ierr = PetscFree3(eowners, nvtx, vtx_done);CHKERRQ(ierr);
 
-  net->g_nvertices = g_nvertices;
-  net->l_nvertices = l_nvertices;
+  network->g_nvertices = g_nvertices;
+  network->l_nvertices = l_nvertices;
 
+  edgelists[0] = edgelist;
+  ierr = DMNetworkSetSizes(network->network, 1, &l_nvertices, &l_nedges, 0, NULL);CHKERRQ(ierr);
+  ierr = DMNetworkSetEdgeList(networkdm, edgelists, NULL);CHKERRQ(ierr);
+  ierr = DMNetworkLayoutSetUp(network->network);CHKERRQ(ierr);
+
+  ierr = DMNetworkGetVertexRange(network->network, &vstart, &vend);CHKERRQ(ierr);
+  /*if NOT root, need to allocate memory for vertices*/
+  if(rank){
+    ierr = PetscCalloc2(vend-vstart, &vertices, l_nedges, &highways);CHKERRQ(ierr);
+  }
+
+  highways = network->highways;
+  vertices = network->vertices;
+  
+  ierr = DMNetworkGetEdgeRange(network->network, &estart, &eend);CHKERRQ(ierr);
+  for(e = estart; e < eend; ++e){
+    ierr = DMNetworkAddComponent(network->network, e, network->highway_key, &highways[e - estart]);CHKERRQ(ierr);
+    /* discrete_dimension is the number of nodes in one highway's discretization */
+    ierr = DMNetworkAddNumVariables(networkdm, e, 2 * highways[e-estart].discrete_dimension);CHKERRQ(ierr);
+
+
+      
   PetscFunctionReturn(0);
 }
 
 
 
 
-PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, PetscInt network_case, const char* filename)
+PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, PetscInt network_case, const char* filename)
 {
   PetscErrorCode     ierr;
   PetscInt           nhighway, nentry, nexit, ninterchange,nvertices, nlane;
@@ -119,13 +144,22 @@ PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, P
   PetscReal          speed_lim, *arrival_params=NULL, *exit_params=NULL;
   TSExitParams       epars1, epars2, epars3, epars4, epars5;
   PetscBool          ts_distribute;
+  MPI_Comm           comm;
 
   PetscFunctionBegin;
 
   ierr = MPI_Comm_rank(comm, &rank);CHKERRQ(ierr);
   ierr = MPI_Comm_size(comm, &size);CHKERRQ(ierr);
   ierr = PetscCalloc1(1, &net);CHKERRQ(ierr);
+
+  ierr = DMNetworkCreate(PETSC_COMM_WORLD, netdm);CHKERRQ(ierr);
+  ierr = PetscObjectGetComm((PetscObject)(*netdm), &comm);CHKERRQ(ierr);
+
+  ierr = DMNetworkRegisterComponent((*netdm), "HighwayStruct", sizeof(struct _ts_HighwayCtx), &((*net)->highway_key));CHKERRQ(ierr);
+  ierr = DMNetworkRegisterComponent((*netdm), "HighwayVertexStruct", sizeof(struct _ts_HighwayVertex), &((*net)->vertex_key));CHKERRQ(ierr);
+  
   net->comm = comm;
+  net->network = netdm;
   *network = net;
 
   /* create a TSNetwork on process 0 */
@@ -493,8 +527,6 @@ PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm comm, TSNetwork* network, P
      ierr = TSNetworkDistribute(comm, net);CHKERRQ(ierr);
    }
      
-
-
   PetscFunctionReturn(0);
 }
   
