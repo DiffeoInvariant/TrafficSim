@@ -138,6 +138,8 @@ PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network)
 
   for(v = vstart; v < vend; ++v){
     ierr = DMNetworkAddComponent(network->network, v, network->vertex_key, &vertices[v-vstart]);CHKERRQ(ierr);
+
+    ierr = DMNetworkAddNumVariables(network->network, v, 2);CHKERRQ(ierr);
   }
 
   if(size > 1){
@@ -573,4 +575,90 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
   PetscFunctionReturn(0);
 }
   
+
+PetscErrorCode VertexCreateJacobian(DM dm, TSHighwayVertex vertex, PetscInt v, Mat* Jpre);
+{
+  PetscErrorCode ierr;
+  Mat            *vjac;
+  PetscInt       nedges, e, i, M, N, *rows, *cols;
+  PetscBool      isself;
+  const PetscInt *edges, *conn_comps;
+  PetscScalar    *zeros;
+
+  PetscFunctionBegin;
+  
+  ierr = DMNetworkGetSupportingEdges(dm, v, &nedges, &edges);CHKERRQ(ierr);
+  if (nedges <= 0){
+    SETERRQ2(PETSC_COMM_SELF,1,"%d vertex, nedges %d\n",v,nedges);
+  }
+
+  /* each connected edge gets two Jacobians, one vertex-edge and one vertex-vertex */
+  ierr = PetscCalloc1(2 * nedges + 1, &vjac);CHKERRQ(ierr);
+
+  /* this vertex gets a dense block of zeros */
+  ierr = DMNetworkGetNumVariables(dm, v, &M);CHKERRQ(ierr);
+  if(M != 2){
+    SETERRQ1(PETSC_COMM_SELF, 1, "Number of vertex variables M != 2.", M);
+  }
+  ierr = PetscMalloc3(M, &rows, M, &cols, M * M, &zeros);CHKERRQ(ierr);
+  ierr = PetscArrayzero(zeros, M * M);CHKERRQ(ierr);
+  for(i=0; i < M; ++i){
+    rows[i] = i;
+  }
+
+  for(e=0; e < nedges; ++e){
+    /* create Jacobian for vertex v to edge e, J(v, e) */
+    ierr = DMNetworkGetConnectedVertices(dm, edges[e], &conn_comps);CHKERRQ(ierr);
+    isself = (v == conn_comps[0]) ? PETSC_TRUE : PETSC_FALSE;
+
+    if(Jpre){
+      if(isself){
+	vjac[2 * e + 1] = Jpre[0];
+      } else {
+	vjac[2 * e + 1] = Jpre[1];
+      }
+      vjac[2 * e + 2] = Jpre[2];
+      ierr = PetscObjectReference((PetscObject)(vjac[2 * e + 1]));CHKERRQ(ierr);
+      ierr = PetscObjectReference((PetscObject)(vjac[2 * e + 2]));CHKERRQ(ierr);
+    } else {
+      ierr = MatCreate(PETSC_COMM_SELF, &vjac[2 * e + 1]);CHKERRQ(ierr);
+      ierr = DMNetworkGetNumVariables(dm, edges[e], &N);CHKERRQ(ierr);
+      ierr = MatSetSizes(vjac[2 * e + 1], PETSC_DECIDE, PETSC_DECIDE, M, N);CHKERRQ(ierr);
+      ierr = MatSetFromOptions(vjac[2 * e + 1]);CHKERRQ(ierr);
+      ierr = MatSetOption(vjac[2 * e + 1], MAT_STRUCTURE_ONLY, PETSC_TRUE);CHKERRQ(ierr);
+      ierr = MatSeqAIJSetPreallocation(vjac[2 * e + 1], 2, NULL);CHKERRQ(ierr);
+      /* J(e, v) */
+      if(N){
+	if(isself){
+	  for(i=0; i < 2; ++i){
+	    /* coupling to incoming edge */
+	    cols[i] = i;
+	  }
+	} else {
+	  /* coupling to outgoing edge */
+	  cols[0] = N-2;
+	  cols[1] = N-1;
+	}
+	ierr = MatSetValues(vjac[2 * e + 1], 2, rows, 2, cols, zeros, INSERT_VALUES);CHKERRQ(ierr);
+      }
+      ierr = MatAssemblyBegin(vjac[2 * e + 1], MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+      ierr = MatAssemblyEnd(vjac[2 * e + 1], MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+      /* Jacobian between this vertex and connected vertices, which is
+	 just zero, since all relevant information as to what's happening
+	 at this vertex is contained solely in the incoming/outgoing edges
+	 and the vertex. */
+      ierr = MatCreate(PETSC_COMM_SELF, &vjac[2 * e + 2]);CHKERRQ(ierr);
+      ierr = MatSetSizes(vjac[2 * e + 2], PETSC_DECIDE, PETSC_DECIDE, M, M);CHKERRQ(ierr);
+      ierr = MatSetFromOptions(vjac[2 * e + 2]);CHKERRQ(ierr);
+      ierr = MatSetOption(vjac[2 * e + 2], MAT_STRUCTURE_ONLY, PETSC_TRUE);CHKERRQ(ierr);
+      ierr = MatSeqAIJSetPreallocation(vjac[2 * e + 2], 1, NULL);CHKERRQ(ierr);
+      ierr = MatAssemblyBegin(vjac[2 * e + 2], MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+      ierr = MatAssemblyEnd(vjac[2 * e + 2], MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+      }/* end if(N) */
+    }/*end loop over e */
+    ierr = PetscFree3(rows, cols, zeros);CHKERRQ(ierr);
+    
+    vertex->jac = vjac;
+
+    PetscFunctionReturn(0);
   

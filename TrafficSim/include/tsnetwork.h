@@ -15,6 +15,8 @@ struct _ts_HighwayVertex {
   TSInterchangeCtx          *intc2_ctx=NULL; /* if there's a split/join */
   TSHighwayEntryCtx         *entr_ctx=NULL;
   TSHighwayExitCtx          *exit_ctx=NULL;
+
+  PetscReal                 rho, v;
   Mat                       *jac=NULL;
   /* Can people enter or exit the highway system here? 
      If so, what distribution does that follow? */
@@ -34,6 +36,9 @@ struct _ts_HighwayVertex {
 
 typedef struct _ts_HighwayVertex *TSHighwayVertex;
 
+
+extern PetscErrorCode VertexCreateJacobian(DM dm, TSHighwayVertex vertex, PetscInt v, Mat* Jpre, Mat *J[]);
+  
 struct _ts_Network {
   DM              network;
   MPI_comm        comm;

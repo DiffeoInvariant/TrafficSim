@@ -315,7 +315,7 @@ PetscErrorCode HighwaySetTrafficData(TSHighway highway, const PetscInt* num_entr
   PetscFunctionReturn(0);
 }
 
-#if 0
+
 /*
   HighwayCreateJacobian - create (preallocate) Jacobian matrices for a highway section (at the start, in the middle, and at the end of the segment).
 
@@ -327,7 +327,6 @@ PetscErrorCode HighwaySetTrafficData(TSHighway highway, const PetscInt* num_entr
   J_out - array of three preallocated (but not computed) Jacobian matrices 
 
  */
-/*
 	  
 PetscErrorCode HighwayCreateJacobian(TSHighway highway, Mat* J_pre, Mat* J_out[])
 {
@@ -346,20 +345,19 @@ PetscErrorCode HighwayCreateJacobian(TSHighway highway, Mat* J_pre, Mat* J_out[]
   }
 
   ierr = PetscMalloc1(3, &J_highway);CHKERRQ(ierr);
-*/
   /* this highway segment's Jacobian */
-				     /*
+				     
   ierr = DMSetMatrixStructureOnly(highway->da, PETSC_TRUE);CHKERRQ(ierr);
   ierr = DMCreateMatrix(highway->da, &J_highway[0]);CHKERRQ(ierr);
   ierr = DMSetMatrixStructureOnly(highway->da, PETSC_FALSE);CHKERRQ(ierr);
-				     */
+				     
   /* Jacobian for ahead highway-highway junction (ahead of monitoring station).
 
      The variables to be solved for are rho and v, so the Jacobian structure is
      [ [1  dv/drho]
-       [drho/dv r ] ]
+       [drho/dv 1 ] ]
    */
-				     /*
+				     
   ierr = MatGetSize(J_highway[0], &M, NULL);CHKERRQ(ierr);
   ierr = PetscCalloc2(M, &nz, 4, &aa);CHKERRQ(ierr);
 
@@ -367,19 +365,61 @@ PetscErrorCode HighwayCreateJacobian(TSHighway highway, Mat* J_pre, Mat* J_out[]
   ierr = MatSetSizes(J_highway[1], PETSC_DECIDE, PETSC_DECIDE, M, 2);CHKERRQ(ierr);
   ierr = MatSetFromOptions(J_highway[1]);CHKERRQ(ierr);
   ierr = MatSetOption(J_highway[1], MAT_STRUCTURE_ONLY, PETSC_TRUE);CHKERRQ(ierr);
-				     */
-  /* nonzero structure by row */
-				     /*
+				     
+  /* nonzero structure by row for behind vertex*/
+  				     
   nz[0] = 2;
   nz[1] = 2;
+  rows[0] = 0; rows[1] = 1;
+  cols[0] = 0; cols[1] = 1;
+  ierr = MatAIJSetPreallocation(J_highway[1], 0, nz);CHKERRQ(ierr);
+  ierr = MatSetValues(J_highway[1], 2, rows, 2, cols, aa, INSERT_VALUES);CHKERRQ(ierr);
+  ierr = MatAssemblyBegin(J_highway[1], MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(J_highway[1], MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  /* same for ahead vertex */
+  ierr = MatCreate(PETSC_COMM_SELF, &J_highway[2]);CHKERRQ(ierr);
+  ierr = MatSetSizes(J_highway[2], PETSC_DECIDE, PETSC_DECIDE, M, 2);CHKERRQ(ierr);
+  ierr = MatSetFromOptions(J_highway[2]);CHKERRQ(ierr);
+  ierr = MatSetOption(J_highway[2], MAT_STRUCTURE_ONLY, PETSC_TRUE);CHKERRQ(ierr);
+				      				     
+  nz[0] = 0;
+  nz[1] = 0;
+  nz[M-2] = 2;
+  nz[M-1] = 2;
+ 
+  rows[0] = M-2; rows[1] = M-1;
+  ierr = MatAIJSetPreallocation(J_highway[2], 0, nz);CHKERRQ(ierr);
+  ierr = MatSetValues(J_highway[2], 2, rows, 2, cols, aa, INSERT_VALUES);CHKERRQ(ierr);
+  ierr = MatAssemblyBegin(J_highway[2], MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(J_highway[2], MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  ierr = PetscFree2(nz, aa);
+
+  *J_out = J_highway;
+  highway->jac = J_highway;
 
 
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode HighwayDestroyJacobian(TSHighway highway)
+{
+  PetscErrorCode ierr;
+  PetscInt       i;
+  Mat            *J = highway->jac;
 
-				     */
- #endif
+  PetscFunctionBegin;
+  if(J){
+    for(i=0; i < 3; ++i){
+      ierr = MatDestroy(&J[i]);CHKERRQ(ierr);
+    }
+  }
+  ierr = PetscFree(J);
+  PetscFunctionReturn(0);
+}
+				     
+
 
 PetscErrorCode HighwaySetUp(TSHighway highway)
 {
@@ -388,8 +428,11 @@ PetscErrorCode HighwaySetUp(TSHighway highway)
 
   PetscFunctionBegin;
   ierr = DMDACreate1d(PETSC_COMM_SELF, DM_BOUNDARY_GHOSTED, highway->discrete_dimension, 2, 1, NULL, &(highway->da));CHKERRQ(ierr);
-
-
+  ierr = DMSetFromOptions(highway->da);CHKERRQ(ierr);
+  ierr = DMDASetFieldName(highway->da, 0, "rho");CHKERRQ(ierr);
+  ierr = DMDASetFieldName(highway->da, 1, "v");CHKERRQ(ierr);
+  ierr = DMDASetUniformCoordinates(highway->da, 0, highway->length, 0, 0, 0, 0);CHKERRQ(ierr);
+  ierr = DMDACreateGlobalVector(highway->da, &(highway->X));CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
