@@ -45,7 +45,7 @@ struct _ts_Network {
   PetscInt*       edgelist;/*local edge list */
   PetscInt        g_discrete_dimension, l_discrete_dimension; /* number of global and local
 							   nodes used in DMDA discretization */
-  Vec             l_X, l_dXdt; /* vectors used for local function evaluation at nodes (X is (rho, v)) */
+  Vec             g_X, l_X, l_dXdt; /* vectors used for local function evaluation at nodes (X is (rho, v)) */
 
   TSHighway       highways;
   TSHighwayVertex vertices;

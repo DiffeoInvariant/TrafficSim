@@ -379,7 +379,23 @@ PetscErrorCode HighwayCreateJacobian(TSHighway highway, Mat* J_pre, Mat* J_out[]
 
 
 				     */
-extern PetscErrorCode HighwayExitCreate(TSHighwayExitCtx** exit, PetscReal postmile, TSExitType exit_t, TSExitParams* params)
+ #endif
+
+PetscErrorCode HighwaySetUp(TSHighway highway)
+{
+  PetscErrorCode ierr;
+  DMDALocalInfo  info;
+
+  PetscFunctionBegin;
+  ierr = DMDACreate1d(PETSC_COMM_SELF, DM_BOUNDARY_GHOSTED, highway->discrete_dimension, 2, 1, NULL, &(highway->da));CHKERRQ(ierr);
+
+
+
+  PetscFunctionReturn(0);
+}
+
+
+PetscErrorCode HighwayExitCreate(TSHighwayExitCtx** exit, PetscReal postmile, TSExitType exit_t, TSExitParams* params)
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;

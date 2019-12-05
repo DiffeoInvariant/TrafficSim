@@ -26,6 +26,21 @@ PetscErrorCode TSNetworkDestroy(TSNetwork network){
 }
 
 
+PetscErrorCode TSNetworkCleanUp(TSNetwork network){
+  PetscErrorCode ierr;
+  PetscMPIInt    rank;
+
+  PetscFunctionBegin;
+  ierr = MPI_Comm_rank(network->comm, &rank);CHKERRQ(ierr);
+  ierr = PetscFree(network->edgelist);CHKERRQ(ierr);
+  
+  if(!rank){
+    ierr = PetscFree2(network->vertices,network->highways);CHKERRQ(ierr);
+  }
+  PetscFunctionReturn(0);
+}
+  
+
 PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network)
 {
   PetscErrorCode ierr;
@@ -118,7 +133,34 @@ PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network)
   for(e = estart; e < eend; ++e){
     ierr = DMNetworkAddComponent(network->network, e, network->highway_key, &highways[e - estart]);CHKERRQ(ierr);
     /* discrete_dimension is the number of nodes in one highway's discretization */
-    ierr = DMNetworkAddNumVariables(networkdm, e, 2 * highways[e-estart].discrete_dimension);CHKERRQ(ierr);
+    ierr = DMNetworkAddNumVariables(network->network, e, 2 * highways[e-estart].discrete_dimension);CHKERRQ(ierr);
+  }
+
+  for(v = vstart; v < vend; ++v){
+    ierr = DMNetworkAddComponent(network->network, v, network->vertex_key, &vertices[v-vstart]);CHKERRQ(ierr);
+  }
+
+  if(size > 1){
+    DM               plex;
+    PetscPartitioner part;
+    ierr = DMNetworkGetPlex(network->network, &plex);CHKERRQ(ierr);
+    ierr = DMPlexGetPartitioner(plex, &part);CHKERRQ(ierr);
+    ierr = PetscPartitionerSetType(part, PETSCPARTITIONERSIMPLE);CHKERRQ(ierr);
+  }
+
+  ierr = DMSetUp(network->network);CHKERRQ(ierr);
+  ierr = TSNetworkCleanUp(network);CHKERRQ(ierr);
+
+  /* distribute data and create vectors*/
+  ierr = DMNetworkDistribute(&(network->network), 0);CHKERRQ(ierr);
+  
+  ierr = DMCreateGlobalVector(network->network, network->g_X);CHKERRQ(ierr);
+  ierr = DMCreateLocalVector(network->network, network->l_X);CHKERRQ(ierr);
+  ierr = DMCreateLocalVector(network->network, network->l_dXdt);CHKERRQ(ierr);
+
+  /* set up highways */
+  
+
 
 
       
@@ -159,7 +201,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
   ierr = DMNetworkRegisterComponent((*netdm), "HighwayVertexStruct", sizeof(struct _ts_HighwayVertex), &((*net)->vertex_key));CHKERRQ(ierr);
   
   net->comm = comm;
-  net->network = netdm;
+  net->network = *netdm;
   *network = net;
 
   /* create a TSNetwork on process 0 */
@@ -204,13 +246,14 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 
       /* allocate highways and vertices, incl entries, exits, and interchanges */
       ninterchange = nvertex + 2;
-      ierr = PetscCalloc7(nvertices, &vertices,
-			  ninterchange, &interchanges,
+      ierr = PetscCalloc2(nvertices, &vertices,
+			  nedges, &highways);CHKERRQ(ierr);
+      
+      ierr = PetscCalloc5(ninterchange, &interchanges,
 			  nentry, &entries,
 			  nentry * 8, &arrival_params,
 			  nexit * 8, &exit_params,
-			  nexit, &exits,
-			  nedges, &highways);CHKERRQ(ierr);
+			  nexit, &exits);CHKERRQ(ierr);
       
       for(i = 0; i < nvertices; ++i){
 	vertices[i].id=i;
