@@ -50,6 +50,13 @@ PetscErrorCode TSSpeedFromLinearDensity(PetscReal* speed, PetscReal rho, PetscRe
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode TSSpeedDerivativeFromLinearDensity(PetscReal* speed_deriv, PetscReal speed_limit, PetscReal rho_limit)
+{
+  PetscFunctionBegin;
+  *speed_deriv = -speed_limit/rho_limit;
+  PetscFunctionReturn(0);
+}
+
   
   
   

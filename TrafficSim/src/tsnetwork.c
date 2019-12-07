@@ -41,14 +41,14 @@ PetscErrorCode TSNetworkCleanUp(TSNetwork network){
 }
 
 
-PetscErrorCode VertexGetArrivalRate(TSHighwayVertex vertex, PetscReal t, PetscReal* lambda)
+PetscErrorCode VertexGetArrivalRate(TSHighwayEntryCtx *vertex_ctx, PetscReal t, PetscReal* lambda)
 {
   TSHighwayEntryCtx       *entr;
   PetscInt                n, i;
 
   PetscFunctionBegin;
-  if(vertex->entr_ctx){
-    entr = vertex->entr_ctx;
+  if(vertex_ctx){
+    entr = vertex_ctx;
     if(entr->arrival_dist == TS_POISSON_DYNAMIC){
       n = entr->num_arrival_params;
       for(i=0; i < 2*n - 3; i += 2){
@@ -71,16 +71,16 @@ PetscErrorCode VertexGetArrivalRate(TSHighwayVertex vertex, PetscReal t, PetscRe
 }
 
 
-PetscErrorCode VertexGetExitRate(TSHighwayVertex vertex, PetscReal t, PetscReal* erate)
+PetscErrorCode VertexGetExitRate(TSHighwayExitCtx* vertex_ctx, PetscReal t, PetscReal* erate)
 {
   TSExitParams     *epars;
   PetscInt         n, i;
 
   PetscFunctionBegin;
 
-  if(vertex->exit_ctx){
-    if(vertex->exit_ctx->type == TS_DYNAMIC_EXIT){
-      epars = vertex->exit_ctx->prob_params;
+  if(vertex_ctx){
+    if(vertex_ctx->type == TS_DYNAMIC_EXIT){
+      epars = vertex_ctx->prob_params;
       n = epars->n;
       for(i=0; i < 2*n - 3; i += 2){
 	/* find the time */
@@ -101,22 +101,22 @@ PetscErrorCode VertexGetExitRate(TSHighwayVertex vertex, PetscReal t, PetscReal*
 }
       
       
-PetscErrorCode VertexGetTrafficFlowRate(TSHighwayVertex vertex, PetscReal* tflowrate)
+PetscErrorCode VertexGetTrafficFlowRate(PetscReal rho, PetscReal v, PetscReal* tflowrate)
 {
   PetscFunctionBegin;
   if(!tflowrate) SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_NULL, "tflowrate cannot be NULL.");
-  *tflowrate = vertex->rho * vertex->v;
+  *tflowrate = rho * v;
   PetscFunctionReturn(0);
 }
   
     
-PetscErrorCode VertexGetCurrentTrafficCount(TSHighwayVertex vertex, PetscReal deltat, PetscInt *count)
+PetscErrorCode VertexGetCurrentTrafficCount(PetscReal rho, PetscReal v, PetscReal deltat, PetscInt *count)
 {
   PetscErrorCode ierr;
   PetscReal      flowrate;
 
   PetscFunctionBegin;
-  ierr = VertexGetTrafficFlowRate(vertex, &flowrate);CHKERRQ(ierr);
+  ierr = VertexGetTrafficFlowRate(rho, v, &flowrate);CHKERRQ(ierr);
 
   *count = (PetscInt)(flowrate * deltat);
 
@@ -124,35 +124,35 @@ PetscErrorCode VertexGetCurrentTrafficCount(TSHighwayVertex vertex, PetscReal de
 }
   
 	    
-PetscErrorCode VertexGetNumArrivals(TSHighwayVertex vertex, PetscReal t, PetscInt *narrival)
+PetscErrorCode VertexGetNumArrivals(TSHighwayEntryCtx* vertex_ctx, PetscReal t, PetscInt *narrival)
 {
   PetscErrorCode ierr;
   PetscReal      lambda;
 
   PetscFunctionBegin;
 
-  ierr = VertexGetArrivalRate(vertex, t, &lambda);CHKERRQ(ierr);
+  ierr = VertexGetArrivalRate(vertex_ctx, t, &lambda);CHKERRQ(ierr);
   ierr = TSPoissonSample(lambda, narrival);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
 
-PetscErrorCode VertexAddCarsToDensity(TSHighwayVertex vertex, PetscReal t, PetscReal deltat)
+PetscErrorCode VertexGetDensityFactor(TSHighwayEntryCtx* vertex_ctx, TSHighwayExitCtx* vertex_exctx, PetscReal rho, PetscReal v, PetscReal t, PetscReal deltat, PetscReal* density_fact)
 {
   PetscErrorCode ierr;
   PetscInt       ncurr, nnew, ntot;
-  PetscReal      new_density_factor;
+  PetscReal      new_density_factor, erate;
 
   PetscFunctionBegin;
 
-  ierr = VertexGetCurrentTrafficCount(vertex, deltat, &ncurr);CHKERRQ(ierr);
-  ierr = VertexGetNumArrivals(vertex, t, &nnew);CHKERRQ(ierr);
-
-  ntot = ncurr + nnew;
+  ierr = VertexGetCurrentTrafficCount(rho, v, &ncurr);CHKERRQ(ierr);
+  ierr = VertexGetNumArrivals(vertex_ctx, t, &nnew);CHKERRQ(ierr);
+  ierr = VertexGetExitRate(vertex_ectx, t, &erate);CHKERRQ(ierr);
+  ntot = (PetscInt)((1.0 - erate)*(PetscReal)ncurr) + nnew;
 
   new_density_factor = ((PetscReal)ntot)/((PetscReal)ncurr);
 
-  vertex->rho *= new_density_factor;
+  *density_fact = new_density_factor;
 
   PetscFunctionReturn(0);
 }
@@ -314,6 +314,7 @@ PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network, PetscBool m
 
 PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F, void* ctx)
 {
+  /* IFunction for d(rho)/dt + u(rho) * d(rho)/dx = (sum over vertices(cars entering - cars leaving)) */
   PetscErrorCode ierr;
   TSNetwork      net = (TSNetwork)ctx;
   DM             netdm;
@@ -327,7 +328,7 @@ PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F,
   DMDALocalInfo  info;
   TSHighwayTrafficField *hwyx, *hwyxdot, *vtxx;
   const PetscScalar *xarr, *xdotarr, *xoldarr;
-  PetscReal      dt;
+  PetscReal      dt, density_factor;
 
   PetscFunctionBegin;
 
@@ -368,7 +369,31 @@ PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F,
     vtxx = (TSHighwayTrafficField*)(xarr + var_offset);
     /* value of F at the vertex */
     vtxf = (PetscScalar*)(farr + var_offset);
-    /* drho/dt = 
+    /* drho/dt */
+    ierr = VertexGetDensityFactor(vertex->entr_ctx, vertex->exit_ctx, vtxx[0].rho, vtxx[0].v, t, dt, &density_factor);CHKERRQ(ierr);
+
+    vtxf[0] = (density_factor - 1.0) * vtxx[0].rho;
+    if(net->speed_model == TS_LINEAR){
+      /* dv/dt*/
+      vtxf[1] = vtxf[0] * -1 * vertex->speed_limit / vertex->rho_limit;
+    }
+
+  }/*end loop over vertices */
+
+  ierr = DMNetworkGetEdgeRange(netdm, &estart, &eend);CHKERRQ(ierr);
+  for(e = estart; e < eend; ++e){
+    ierr = DMNetworkGetComponent(netdm, e, 0, &net->highway_key, (void**)&highway);CHKERRQ(ierr);
+
+    ierr = DMNetworkGetVariableOffset(netdm, e, &var_offset);CHKERRQ(ierr);
+
+    hwyx = (TSHighwayTrafficField*)(xarr + var_offset);
+    hwyxdot = (TSHighwayTrafficField*)(xdotarr + var_offset);
+    hwyf = (PetscScalar*)(farr + var_offset);
+
+    highway->dt = dt;
+    highway->old_rho_v = (TSHighwayTrafficField*)(xoldarr + var_offset);
+
+    
 
     
     
@@ -513,6 +538,8 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  vertices[i].exit_ctx = exits[i];
 	  highways[i].num_lanes = 4;
 	  highways[i].speed_limit=70.0;
+	  vertices[0].speed_limit = 70.0;
+	  vertices[0].rho_limit = 10.0;
 	  break;
 	case 1:
 	  /* V1, one interchange, one exit, one entry */
@@ -562,6 +589,8 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  highways[0].exits = exits + i;
 	  highways[1].num_lanes = 3;
 	  highways[1].speed_limit=70.0;
+	  vertices[1].speed_limit=70.0;
+	  vertices[1].rho_limit = 10.0;
 	  break;
 	case 2:
 	  /* V2, two interchanges, no entries or exits */
@@ -584,6 +613,8 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  highways[1].interchanges3 = interchanges + 3;
 	  highways[2].num_lanes = 3;
 	  highways[2].speed_limit = 80.0;
+	  vertices[i].speed_limit = 70.0;
+	  vertices[i].rho_limit = 10.0;
 	  highways[4].num_lanes = 2;
 	  highways[4].speed_limit = 55.0;
 	  highways[2].length = 8.0;
@@ -600,7 +631,8 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  highways[3].length = 12.0;
 	  highways[3].num_lanes = 3;
 	  highways[3].speed_limit = 65.0;
-	  
+	  vertices[i].speed_limit = 65.0;
+	  vertices[i].rho_limit = 8.0;
 	  entries[2].postmile = 28.0;
 	  entries[2].arrival_dist = TS_POISSON_DYNAMIC;
 	  /* the N arrival parameters for TS_POISSON_DYNAMIC are given as
@@ -645,7 +677,8 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  highways[5].length = 8.0;
 	  highways[5].num_lanes = 3.0;
 	  highways[5].speed_limit = 65.0;
-	  
+	  vertices[i].speed_limit = 65.0;
+	  vertices[i].rho_limit = 10.0;
 	  entries[3].postmile = 40.0;
 	  entries[3].arrival_dist = TS_POISSON_DYNAMIC;
 	  /* the N arrival parameters for TS_POISSON_DYNAMIC are given as
@@ -696,7 +729,9 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  highways[6].interchanges2 = interchanges + 7;
 	  highways[6].num_lanes = 3;
 	  highways[6].length = 20.0;
-	  highways[6].speed_limit = 65.0
+	  highways[6].speed_limit = 65.0;
+	  vertices[i].speed_limit = 65.0;
+	  vertices[i].rho_limit = 10.0;
 	  break;
 	 case 6:
 	  /* V6, one interchange, one exit, one entry */
@@ -706,6 +741,9 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  vertices[i].intc_ctx = interchanges + 8;/* pointer arithmetic */
 	  highways[7].interchanges = interchanges + 8;
 	  highways[7].num_lanes = 4;
+	  highways[7].speed_limit = 70.0;
+	  vertices[i].speed_limit = 70.0;
+	  vertices[i].rho_limit = 10.0;
 	  highways[7].length = 12.0;
 	  
 	  entries[4].postmile = 68.0;

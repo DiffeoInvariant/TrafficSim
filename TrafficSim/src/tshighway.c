@@ -451,7 +451,7 @@ PetscErrorCode HighwayExitCreate(TSHighwayExitCtx** exit, PetscReal postmile, TS
   PetscFunctionReturn(0);
 }
 
-extern PetscErrorCode HighwayExitDestroy(TSHighwayExitCtx* exit)
+PetscErrorCode HighwayExitDestroy(TSHighwayExitCtx* exit)
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;
@@ -459,7 +459,7 @@ extern PetscErrorCode HighwayExitDestroy(TSHighwayExitCtx* exit)
   PetscFunctionReturn(0);
 }
 
-extern PetscErrorCode HighwayExitGetParams(TSHighwayExitCtx* exit, PetscInt* nparam, PetscReal* params)
+PetscErrorCode HighwayExitGetParams(TSHighwayExitCtx* exit, PetscInt* nparam, PetscReal* params)
 {
   PetscFunctionBegin;
   *nparam = exit->prob_params.n;
@@ -467,7 +467,7 @@ extern PetscErrorCode HighwayExitGetParams(TSHighwayExitCtx* exit, PetscInt* npa
   PetscFunctionReturn(0);
 }
 
-extern PetscErrorCode HighwayExitSetParams(TSHighwayExitCtx* exit, PetscInt nparam, PetscReal* params)
+PetscErrorCode HighwayExitSetParams(TSHighwayExitCtx* exit, PetscInt nparam, PetscReal* params)
 {
   PetscFunctionBegin;
   exit->prob_params.n = nparam;
@@ -477,7 +477,7 @@ extern PetscErrorCode HighwayExitSetParams(TSHighwayExitCtx* exit, PetscInt npar
   
   
   
-extern PetscErrorCode HighwayEntryCreate(TSHighwayEntryCtx** entry, const PetscReal postmile,
+PetscErrorCode HighwayEntryCreate(TSHighwayEntryCtx** entry, const PetscReal postmile,
 					  const TSArrivalDistributionType arrival_dist_t, PetscInt* n_params,
 					  PetscReal* params)
  {
@@ -494,13 +494,68 @@ extern PetscErrorCode HighwayEntryCreate(TSHighwayEntryCtx** entry, const PetscR
    PetscFunctionReturn(0);
  }
 
- extern PetscErrorCode HighwayEntryDestroy(TSHighwayEntryCtx* entry)
+ PetscErrorCode HighwayEntryDestroy(TSHighwayEntryCtx* entry)
  {
    PetscErrorCode ierr;
    PetscFunctionBegin;
    ierr = PetscFree(entry);CHKERRQ(ierr);
    PetscFunctionReturn(0);
  }
+
+
+PETSC_STATIC_INLINE PetscScalar drhodx(TSHighwayTrafficField *x, PetscInt i, PetscInt end, PetscReal dx)
+{
+  if(i == 0){
+     return (x[i+1].rho - x[i-1].rho)/dx;
+  } else if(i == end){
+    return (x[i].rho - x[i-1].rho)/dx;
+  } else {
+    return (x[i+1].rho - x[i-1].rho)/(2*dx);
+  }
+}
+     
+    
+
+PetscErrorCode HighwayLocalIFunction(TSHighway highway, DMDALocalInfo *info,
+				     PetscReal t, TSHighwayTrafficField *x,
+				     TSHighwayTrafficField *xdot, PetscScalar *f)
+{
+  PetscErrorCode ierr;
+  PetscInt       i, start, n, end;
+  PetscReal      dx=highway->length/(info->mx - 1), dt=highway->dt;
+  PetscScalar    u_avg, xold_avg, dudrho, rho0, rho1, u0, u1;
+  TSHighwayTrafficField *xold=highway->old_rho_v;
+
+  PetscFunctionBegin;
+
+  ierr = DMDAGetCorners(highway->da, &start, 0, 0, &n, 0, 0);CHKERRQ(ierr);
+  end = start + n - 1;
+  /* interior points*/
+  for(i = start+1; i < end; ++i){
+    old_u_avg = (xold[i+1].v + xold[i-1].v) * 0.5;
+    rho0 = xold[i-1].rho;
+    rho1 = xold[i+1].rho;
+    u0 = xold[i-1].v;
+    u1 = xold[i+1].v;
+
+    xold_avg = 0.5*(rho0 + rho1);
+    /*drho/dt + u(rho)*drho/dx = 0 */
+    f[2*(i-1) + 2] = (x[i].rho - xold_avg) + dt * old_u_avg * drhodx(xold, i, end, dx);
+    /* du/dt = du/drho * drho/dt*/
+    ierr = TSSpeedDerivativeFromLinearDensity(&dudrho, highway->speed_limit, highway->rho_limit);CHKERRQ(ierr);
+    f[2*(i-1)+3] = dudrho * f[2*(i-1)+2];
+  }
+
+  /* boundary points */
+
+    
+    
+    
+  
+				     
+
+
+
    
 #endif
 

@@ -16,7 +16,7 @@ struct _ts_HighwayVertex {
   TSHighwayEntryCtx         *entr_ctx=NULL;
   TSHighwayExitCtx          *exit_ctx=NULL;
 
-  PetscReal                 rho, v;
+  PetscReal                 rho, v, speed_limit, rho_limit;
   Mat                       *jac=NULL;
   /* Can people enter or exit the highway system here? 
      If so, what distribution does that follow? */
@@ -39,17 +39,17 @@ typedef struct _ts_HighwayVertex *TSHighwayVertex;
 
 extern PetscErrorCode VertexCreateJacobian(DM dm, TSHighwayVertex vertex, PetscInt v, Mat* Jpre, Mat *J[]);
 
-extern PetscErrorCode VertexGetArrivalRate(TSHighwayVertex vertex, PetscReal t, PetscReal* lambda);
+extern PetscErrorCode VertexGetArrivalRate(TSHighwayEntryCtx* vertex_ctx, PetscReal t, PetscReal* lambda);
 
-extern PetscErrorCode VertexGetExitRate(TSHighwayVertex vertex, PetscReal t, PetscReal* erate);
+extern PetscErrorCode VertexGetExitRate(TSHighwayExitCtx* vertex_ctx, PetscReal t, PetscReal* erate);
 
-extern PetscErrorCode VertexGetNumArrivals(TSHighwayVertex vertex, PetscReal t, PetscInt* narrival);
+extern PetscErrorCode VertexGetNumArrivals(TSHighwayEntryCtx* vertex_ctx, PetscReal t, PetscInt* narrival);
 
-extern PetscErrorCode VertexGetTrafficFlowRate(TSHighwayVertex vertex, PetscReal* tflowrate);
+extern PetscErrorCode VertexGetTrafficFlowRate(PetscReal rho, PetscReal v, PetscReal* tflowrate);
 
-extern PetscErrorCode VertexGetCurrentTrafficCount(TSHighwayVertex vertex, PetscReal deltat, PetscInt* count);
+extern PetscErrorCode VertexGetCurrentTrafficCount(PetscReal rho, PetscReal v, PetscReal deltat, PetscInt* count);
 
-extern PetscErrorCode VertexAddCarsToDensity(TSHighwayVertex vertex, PetscInt num_new_cars);
+extern PetscErrorCode VertexGetDensityFactor(TSHighwayEntryCtx* vertex_ctx, TSHighwayExitCtx* vertex_exctx, PetscReal t, PetscReal deltat, PetscReal* density_fact);
   
 struct _ts_Network {
   DM              network;

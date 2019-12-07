@@ -141,7 +141,7 @@ struct _ts_HighwayCtx{
   TSInterchangeCtx*        interchanges=NULL;
   TSInterchangeCtx*        interchanges2=NULL;
   TSInterchangeCtx*        interchanges3=NULL;
-  PetscReal                speed_limit=-1;
+  PetscReal                speed_limit=-1, rho_limit=-1;
   PetscInt                 num_lanes=-1;
   /* recorded traffic data */
   TSHighwayTrafficData*    traffic_data;
@@ -176,6 +176,8 @@ extern PetscErrorCode HighwayGetCurrentSpeed(TSHighway, PetscInt, PetscReal*, TS
 
 /* flux is speed times density, and can be integrated and compared to counts */
 extern PetscErrorCode HighwayGetCurrentFlux(TSHighway, PetscInt, PetscReal*, TSSpeedDensityModel);
+
+extern PetscErrorCode HighwayLocalIFunction(TSHighway,DMDALocalInfo *, PetscReal, PipeField *, PipeField *, PetscScalar *);
 
 extern PetscErrorCode HighwaySetIdentification(TSHighway, const PetscInt*, const TSRoadDirection*,
 					       const PetscReal*, const PetscReal*, const PetscInt*,

@@ -53,6 +53,9 @@ typedef enum {TS_LINEAR, TS_GENERALIZED_LOGISTIC, TS_DEFAULT,TS_DECIDE} TSSpeedD
 
 extern PetscErrorCode TSSpeedFromLinearDensity(PetscReal*, PetscReal, PetscReal, PetscReal);
 
+/* derivative of speed w.r.t. rho*/
+extern PetscErrorCode TSSpeedDerivativeFromLinearDensity(PetscReal*, PetscReal, PetscReal);
+
 extern PetscErrorCode TSSpeedFromLogisticDensity(PetscReal*, PetscReal, PetscReal, PetscReal);
 
 #endif
