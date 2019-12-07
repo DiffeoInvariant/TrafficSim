@@ -38,6 +38,18 @@ typedef struct _ts_HighwayVertex *TSHighwayVertex;
 
 
 extern PetscErrorCode VertexCreateJacobian(DM dm, TSHighwayVertex vertex, PetscInt v, Mat* Jpre, Mat *J[]);
+
+extern PetscErrorCode VertexGetArrivalRate(TSHighwayVertex vertex, PetscReal t, PetscReal* lambda);
+
+extern PetscErrorCode VertexGetExitRate(TSHighwayVertex vertex, PetscReal t, PetscReal* erate);
+
+extern PetscErrorCode VertexGetNumArrivals(TSHighwayVertex vertex, PetscReal t, PetscInt* narrival);
+
+extern PetscErrorCode VertexGetTrafficFlowRate(TSHighwayVertex vertex, PetscReal* tflowrate);
+
+extern PetscErrorCode VertexGetCurrentTrafficCount(TSHighwayVertex vertex, PetscReal deltat, PetscInt* count);
+
+extern PetscErrorCode VertexAddCarsToDensity(TSHighwayVertex vertex, PetscInt num_new_cars);
   
 struct _ts_Network {
   DM              network;
@@ -46,6 +58,7 @@ struct _ts_Network {
   PetscInt        g_nedges, g_nvertices; /* global num of edges and vertices */
 
   PetscInt        highway_key, vertex_key;
+  PetscBool       manual_jacobian=PETSC_FALSE;/* does the network have a manually-provided Jacobian? */
 
   PetscInt*       edgelist;/*local edge list */
   PetscInt        g_discrete_dimension, l_discrete_dimension; /* number of global and local
@@ -54,6 +67,10 @@ struct _ts_Network {
 
   TSHighway       highways;
   TSHighwayVertex vertices;
+
+  TSArrivalDistributionType arrival_dist_t=TS_POISSON_DYNAMIC;
+  TSSpeedDensityModel       speed_model=TS_LINEAR;
+  TSProblemType             problem_type=TS_TIME_STEP;
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _ts_Network *TSNetwork;
@@ -62,7 +79,7 @@ extern PetscErrorCode TSNetworkCreate(MPI_Comm,TSNetwork*);
 
 extern PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm, TSNetwork*, DM, PetscInt, const char*);
 
-extern PetscErrorCode TSNetworkDistribute(MPI_Comm, TSNetwork);
+extern PetscErrorCode TSNetworkDistribute(MPI_Comm, TSNetwork, PetscBool);
 
 extern PetscErrorCode TSNetworkDestroy(TSNetwork);
 
@@ -93,6 +110,8 @@ extern PetscErrorCode TSNetworkSetMaxTimeSteps(TSNetwork, PetscInt);
 extern PetscErrorCode TSNetworkGetMaxTimeSteps(TSNetwork, PetscInt*);
 
 extern PetscErrorCode TSNetworkSetProblemType(TSNetwork, TSProblemType);
+
+extern PetscErrorCode TSHighwayNetIFunction(TS, PetscReal, Vec, Vec, Vec, void*);
 
 extern PetscErrorCode TSNetworkSolve(TSNetwork, Vec);
 

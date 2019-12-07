@@ -24,9 +24,11 @@ typedef struct {
 } TSPoissonDistribution;
 
 
-extern PetscErrorCode TSExponentialSample(TSExponentialDistribution*, PetscInt);
+extern PetscErrorCode TSExponentialSample(PetscReal, PetscReal*);
 
-extern PetscErrorCode TSPoissonSample(TSPoissonDistribution*, PetscInt);
+extern PetscErrorCode TSPoissonSample(PetscReal, PetscInt*);
+
+extern PetscErrorCode TSUniformSample(PetscReal*, PetscReal, PetscReal);
 
 
 struct _ts_DynamicExponentialDistribution {
@@ -49,8 +51,8 @@ typedef struct _ts_DynamicExponentialDistribution TSDynamicExponentialDistributi
 
 typedef enum {TS_LINEAR, TS_GENERALIZED_LOGISTIC, TS_DEFAULT,TS_DECIDE} TSSpeedDensityModel;
 
-extern PetscErrorCode TSSpeedFromLinearDensity(PetscReal*, PetscReal, PetscReal);
+extern PetscErrorCode TSSpeedFromLinearDensity(PetscReal*, PetscReal, PetscReal, PetscReal);
 
-extern PetscErrorCode TSSpeedFromLogisticDensity(PetscReal*, PetscReal, PetscReal);
+extern PetscErrorCode TSSpeedFromLogisticDensity(PetscReal*, PetscReal, PetscReal, PetscReal);
 
 #endif

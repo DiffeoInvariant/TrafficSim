@@ -39,17 +39,136 @@ PetscErrorCode TSNetworkCleanUp(TSNetwork network){
   }
   PetscFunctionReturn(0);
 }
-  
 
-PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network)
+
+PetscErrorCode VertexGetArrivalRate(TSHighwayVertex vertex, PetscReal t, PetscReal* lambda)
+{
+  TSHighwayEntryCtx       *entr;
+  PetscInt                n, i;
+
+  PetscFunctionBegin;
+  if(vertex->entr_ctx){
+    entr = vertex->entr_ctx;
+    if(entr->arrival_dist == TS_POISSON_DYNAMIC){
+      n = entr->num_arrival_params;
+      for(i=0; i < 2*n - 3; i += 2){
+	/* find the time */
+	if(entr->arrival_params[i] <= t && entr->arrival_params[i+2] > t){
+	  *lambda = entr->arrival_params[i+1];
+	} else if(entr->arrival_params[i+2] == t){
+	  *lambda = entr->arrival_params[i+3];
+	}
+      }
+    } else {
+      SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_WRONG, "Arrival distributions other than TS_POISSON_DYNAMIC are not currently supported.");
+    }
+
+  } else {
+    *lambda = 0.0;
+  }
+
+  PetscFunctionReturn(0);
+}
+
+
+PetscErrorCode VertexGetExitRate(TSHighwayVertex vertex, PetscReal t, PetscReal* erate)
+{
+  TSExitParams     *epars;
+  PetscInt         n, i;
+
+  PetscFunctionBegin;
+
+  if(vertex->exit_ctx){
+    if(vertex->exit_ctx->type == TS_DYNAMIC_EXIT){
+      epars = vertex->exit_ctx->prob_params;
+      n = epars->n;
+      for(i=0; i < 2*n - 3; i += 2){
+	/* find the time */
+	if(epars->params[i] <= t && epars->params[i+2] > t){
+	  *erate = epars->params[i+1];
+	} else if(epars->params[i+2] == t || (i == 2*n-4 && epars->params[i+2] < t)){
+	  *erate = epars->params[i+3];
+	}
+      }
+    } else {
+      SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_WRONG, "Exit distributions other than TS_DYNAMIC_EXIT are not currently supported.");
+    }
+  } else {
+    *erate = 0.0;
+  }
+
+  PetscFunctionReturn(0);
+}
+      
+      
+PetscErrorCode VertexGetTrafficFlowRate(TSHighwayVertex vertex, PetscReal* tflowrate)
+{
+  PetscFunctionBegin;
+  if(!tflowrate) SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_NULL, "tflowrate cannot be NULL.");
+  *tflowrate = vertex->rho * vertex->v;
+  PetscFunctionReturn(0);
+}
+  
+    
+PetscErrorCode VertexGetCurrentTrafficCount(TSHighwayVertex vertex, PetscReal deltat, PetscInt *count)
+{
+  PetscErrorCode ierr;
+  PetscReal      flowrate;
+
+  PetscFunctionBegin;
+  ierr = VertexGetTrafficFlowRate(vertex, &flowrate);CHKERRQ(ierr);
+
+  *count = (PetscInt)(flowrate * deltat);
+
+  PetscFunctionReturn(0);
+}
+  
+	    
+PetscErrorCode VertexGetNumArrivals(TSHighwayVertex vertex, PetscReal t, PetscInt *narrival)
+{
+  PetscErrorCode ierr;
+  PetscReal      lambda;
+
+  PetscFunctionBegin;
+
+  ierr = VertexGetArrivalRate(vertex, t, &lambda);CHKERRQ(ierr);
+  ierr = TSPoissonSample(lambda, narrival);CHKERRQ(ierr);
+
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode VertexAddCarsToDensity(TSHighwayVertex vertex, PetscReal t, PetscReal deltat)
+{
+  PetscErrorCode ierr;
+  PetscInt       ncurr, nnew, ntot;
+  PetscReal      new_density_factor;
+
+  PetscFunctionBegin;
+
+  ierr = VertexGetCurrentTrafficCount(vertex, deltat, &ncurr);CHKERRQ(ierr);
+  ierr = VertexGetNumArrivals(vertex, t, &nnew);CHKERRQ(ierr);
+
+  ntot = ncurr + nnew;
+
+  new_density_factor = ((PetscReal)ntot)/((PetscReal)ncurr);
+
+  vertex->rho *= new_density_factor;
+
+  PetscFunctionReturn(0);
+}
+    
+    
+    
+
+PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network, PetscBool manual_jacobian)
 {
   PetscErrorCode ierr;
   DM             netdm;
   PetscMPIInt    rank, size, tag=0;
   PetscInt       i, e, v, l_nedges, l_nvertices, g_nedges, g_nvertices, estart, eend, vstart, vend, tag;
   PetscInt       *eowners, *edgelists[1]=NULL, *edgelist = network->edgelist, *nvtx=NULL, *vtx_done=NULL;
-  TSHighway       highways=NULL;
-  TSHighwayVertex vertices=NULL;
+  TSHighway       highway=NULL,highways=NULL;
+  TSHighwayVertex vertex=NULL,vertices=NULL;
 
   PetscFunctionBegin;
   ierr = MPI_Comm_rank(comm, &rank);CHKERRQ(ierr);
@@ -160,16 +279,101 @@ PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network)
   ierr = DMCreateLocalVector(network->network, network->l_X);CHKERRQ(ierr);
   ierr = DMCreateLocalVector(network->network, network->l_dXdt);CHKERRQ(ierr);
 
-  /* set up highways */
-  
+  /* set up highways after distribution*/
+  ierr = DMNetworkGetVertexRange(network->network, &vstart, &vend);CHKERRQ(ierr);
 
+  ierr = DMNetworkHasJacobian(network->network, manual_jacobian, manual_jacobian);CHKERRQ(ierr);
+  ierr = DMNetworkGetEdgeRange(network->network, &estart, &eend);CHKERRQ(ierr);
+  for(e=estart; e < eend; ++e){
+    ierr = DMNetworkGetComponent(network->network, e, 0, &network->highway_key, (void**)&highway);CHKERRQ(ierr);
+    ierr = HighwaySetUp(highway);CHKERRQ(ierr);
 
+    if(manual_jacobian){
+      Mat *jac;
+      ierr = HighwayCreateJacobian(highway, NULL, &jac);CHKERRQ(ierr);
+      ierr = DMNetworkEdgeSetMatrix(network->network, e, jac);CHKERRQ(ierr);
+    }
+  }/* end loop over edges */
 
+  if(manual_jacobian){
+    ierr = DMNetworkGetVertexRange(network->network, &vstart, &vend);CHKERRQ(ierr);
+    Mat *jac;
+    for(v = vstart; v < vend; ++v){
+      ierr = VertexCreateJacobian(network->network, v, NULL, &jac);CHKERRQ(ierr);
+      ierr = DMNetworkVertexSetMatrix(network->network, v, jac);CHKERRQ(ierr);
+      ierr = DMNetworkGetComponent(network->network, v, 0, &network->vertex_key, (void**)&vertex);CHKERRQ(ierr);
+      vertex->jac = jac;
+    }/* end loop over vertices */
+  }
+
+  network->manual_jacobian = manual_jacobian;
       
   PetscFunctionReturn(0);
 }
 
 
+PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F, void* ctx)
+{
+  PetscErrorCode ierr;
+  TSNetwork      net = (TSNetwork)ctx;
+  DM             netdm;
+  Vec            lX, lXdot, lF, lXold;
+  const PetscInt *conn_comp;
+  PetscInt       vbehind, vahead, offset_behind, offset_ahead, var_offset;
+  PetscInt       v, vstart, vend, e, estart, eend, nend;
+  PetscBool      ghost;
+  PetscScalar    *farr, *vtxf, *hwyf;
+  TSHighwayVertex vertex;
+  DMDALocalInfo  info;
+  TSHighwayTrafficField *hwyx, *hwyxdot, *vtxx;
+  const PetscScalar *xarr, *xdotarr, *xoldarr;
+  PetscReal      dt;
+
+  PetscFunctionBegin;
+
+  lX = net->l_X;
+  lXdot = net->l_dXdt;
+
+  ierr = TSGetSolution(ts, &lXold);CHKERRQ(ierr);
+  ierr = TSGetDM(ts, &netdm);CHKERRQ(ierr);
+  ierr = TSGetTimeStep(ts, &dt);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(netdm, &lF);CHKERRQ(ierr);
+
+  /* zero rhs result before computing it */
+  ierr = VecSet(F, 0.0);CHKERRQ(ierr);
+  ierr = VecSet(lF, 0.0);CHKERRQ(ierr);
+
+  
+  /* update ghost values for lX and lXdot */
+  ierr = DMGlobalToLocalBegin(netdm, X, INSERT_VALUES, lX);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(netdm, X, INSERT_VALUES, lX);CHKERRQ(ierr);
+  
+  ierr = GlobalToLocalBegin(netdm, Xdot, INSERT_VALUES, lXdot);CHKERRQ(ierr);
+  ierr = GlobalToLocalEnd(netdm, Xdot, INSERT_VALUES, lXdot);CHKERRQ(ierr);
+
+  ierr = VecGetArrayRead(lX, &xarr);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(lXdot, &xdotarr);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(lXold, &xoldarr);CHKERRQ(ierr);
+
+  /* get vertex information */
+  ierr = DMNetworkGetVertexRange(netdm, &vstart, &vend);CHKERRQ(ierr);
+  for(v = vstart; v < vend; ++v){
+    ierr = DMNetworkIsGhostVertex(netdm, v, &ghost);CHKERRQ(ierr);
+    if(ghost) continue;
+
+    ierr = DMNetworkGetComponent(netdm, v, 0, &net->vertex_type, (void**)&vertex);CHKERRQ(ierr);
+    ierr = DMNetworkGetVariableOffset(netdm, v, &var_offset);CHKERRQ(ierr);
+
+    /* value of x = (rho, v) at the vertex */
+    vtxx = (TSHighwayTrafficField*)(xarr + var_offset);
+    /* value of F at the vertex */
+    vtxf = (PetscScalar*)(farr + var_offset);
+    /* drho/dt = 
+
+    
+    
+				  
+  
 
 
 PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, PetscInt network_case, const char* filename)
@@ -662,3 +866,5 @@ PetscErrorCode VertexCreateJacobian(DM dm, TSHighwayVertex vertex, PetscInt v, M
 
     PetscFunctionReturn(0);
   
+}
+
