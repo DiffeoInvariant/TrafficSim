@@ -7,24 +7,24 @@
 #include <mpi.h>
 #include "tshighway.h"
 
-typedef enum {TS_LINEAR_STEADY_STATE, TS_NONLINEAR_STEADY_STATE, TS_TIME_STEP} TSProblemType;
+/*typedef enum {TS_LINEAR_STEADY_STATE, TS_NONLINEAR_STEADY_STATE, TS_TIME_STEP} TSProblemType;*/
 
 struct _ts_HighwayVertex {
   /* set these to NULL if not applicable for this vertex */
-  TSInterchangeCtx          *intc_ctx=NULL;
-  TSInterchangeCtx          *intc2_ctx=NULL; /* if there's a split/join */
-  TSHighwayEntryCtx         *entr_ctx=NULL;
-  TSHighwayExitCtx          *exit_ctx=NULL;
+  TSInterchangeCtx          *intc_ctx;/*=NULL;*/
+  TSInterchangeCtx          *intc2_ctx;/*=NULL;  if there's a split/join */
+  TSHighwayEntryCtx         *entr_ctx;/*=NULL;*/
+  TSHighwayExitCtx          *exit_ctx;/*=NULL;*/
 
   PetscReal                 rho, v, speed_limit, rho_limit;
-  Mat                       *jac=NULL;
+  Mat                       *jac;/*=NULL;*/
   /* Can people enter or exit the highway system here? 
      If so, what distribution does that follow? */
-  TSArrivalDistributionType entry_dist=TS_NO_ARRIVAL;
-  TSExitType                exit_dist=TS_NO_EXIT;
+  TSArrivalDistributionType arrival_dist;/*=TS_NO_ARRIVAL;*/
+  TSExitType                exit_dist;/*=TS_NO_EXIT;*/
   
   PetscInt                  id;
-  PetscInt                  is_boundary=0; /* 0 = not a boundary vertex,
+  PetscInt                  is_boundary;/*=0; 0 = not a boundary vertex,
 					      1 = boundary vertex, cars can
 					      enter here, but no travel
 					      in the other direction,
@@ -49,16 +49,16 @@ extern PetscErrorCode VertexGetTrafficFlowRate(PetscReal rho, PetscReal v, Petsc
 
 extern PetscErrorCode VertexGetCurrentTrafficCount(PetscReal rho, PetscReal v, PetscReal deltat, PetscInt* count);
 
-extern PetscErrorCode VertexGetDensityFactor(TSHighwayEntryCtx* vertex_ctx, TSHighwayExitCtx* vertex_exctx, PetscReal t, PetscReal deltat, PetscReal* density_fact);
+extern PetscErrorCode VertexGetDensityFactor(TSHighwayEntryCtx* vertex_ctx, TSHighwayExitCtx* vertex_exctx, PetscReal rho, PetscReal v, PetscReal t, PetscReal deltat, PetscReal* density_fact);
   
 struct _ts_Network {
   DM              network;
-  MPI_comm        comm;
+  MPI_Comm        comm;
   PetscInt        l_nedges, l_nvertices; /* local num of edges and vertices */
   PetscInt        g_nedges, g_nvertices; /* global num of edges and vertices */
 
   PetscInt        highway_key, vertex_key;
-  PetscBool       manual_jacobian=PETSC_FALSE;/* does the network have a manually-provided Jacobian? */
+  PetscBool       manual_jacobian;/*=PETSC_FALSE; does the network have a manually-provided Jacobian? */
 
   PetscInt*       edgelist;/*local edge list */
   PetscInt        g_discrete_dimension, l_discrete_dimension; /* number of global and local
@@ -68,16 +68,16 @@ struct _ts_Network {
   TSHighway       highways;
   TSHighwayVertex vertices;
 
-  TSArrivalDistributionType arrival_dist_t=TS_POISSON_DYNAMIC;
-  TSSpeedDensityModel       speed_model=TS_LINEAR;
-  TSProblemType             problem_type=TS_TIME_STEP;
+  TSArrivalDistributionType arrival_dist_t;/*=TS_POISSON_DYNAMIC;*/
+  TSSpeedDensityModel       speed_model;/*=TS_LINEAR;*/
+  TSProblemType             problem_type;/*=TS_TIME_STEP;*/
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _ts_Network *TSNetwork;
 
 extern PetscErrorCode TSNetworkCreate(MPI_Comm,TSNetwork*);
 
-extern PetscErrorCode TSNetworkCreateWithStructure(MPI_Comm, TSNetwork*, DM, PetscInt, const char*);
+extern PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, PetscInt network_case, const char* filename);
 
 extern PetscErrorCode TSNetworkDistribute(MPI_Comm, TSNetwork, PetscBool);
 

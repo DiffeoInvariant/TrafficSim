@@ -1,5 +1,6 @@
 #include "../include/tshighway.h"
-#include <cstdlib.h>
+#include <stdlib.h>
+#include <petscdmda.h>
 
 /* subroutines for TSHighway handline */
 
@@ -20,7 +21,7 @@ PetscErrorCode HighwayCreate(MPI_Comm comm, TSHighway* highway)
   ierr = PetscNew(highway);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
-
+/*
 PetscErrorCode HighwayDestroy(TSHighway highway){
   PetscErrorCode ierr;
   PetscInt       id;
@@ -57,7 +58,7 @@ PetscErrorCode HighwayDestroy(TSHighway highway){
 
   PetscFunctionReturn(0);
 }
-
+*/
 /* 
    HighwaySetIdentification - Set identifying information for a TSHighway
    object. 
@@ -80,7 +81,7 @@ PetscErrorCode HighwayDestroy(TSHighway highway){
    If you don't want to set a particular parameter, pass NULL. If you pass NULL as a name length and do not pass NULL for the corresponding name parameter, 
    TSim will try to guess the length of the name, but this is UNSAFE; DO NOT DO IT IF YOU HAVE ANY CHOICE
  */
-
+#if 0
 PetscErrorCode HighwaySetIdentification(TSHighway highway, const PetscInt* district,
 					const TSRoadDirection* direction, const PetscReal* length,
 					const PetscReal* postmile, const PetscInt* highway_name_len,
@@ -122,7 +123,7 @@ PetscErrorCode HighwaySetIdentification(TSHighway highway, const PetscInt* distr
   }
 
   if(highway_name){
-    if PetscLikely(highway_name_len){
+    if(PetscLikely(highway_name_len)){
       if PetscUnlikely(*highway_name_len > TS_MAX_ROAD_NAME_LEN){
 	  SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_SIZ, "highway_name_len (including null-terminator) must be less than or equal to TS_MAX_ROAD_NAME_LEN.\n");
       } else {
@@ -191,10 +192,11 @@ PetscErrorCode HighwaySetIdentification(TSHighway highway, const PetscInt* distr
   speed_limit - speed limit on this highway
   num_lanes - number of lanes in each direction
  */
+
 PetscErrorCode HighwaySetTrafficData(TSHighway highway, const PetscInt* num_entries,
 				     TSHighwayEntryCtx* entries, const PetscInt* num_exits,
 				     TSHighwayExitCtx* exits, const PetscInt* num_interchanges,
-				     TSInterchangeCtx* interchanges, const PerscReal* back_peak_hr,
+				     TSInterchangeCtx* interchanges, const PetscReal* back_peak_hr,
 				     const PetscReal* back_peak_month, const PetscReal* back_aadt,
 				     const PetscReal* ahead_peak_hr, const PetscReal* ahead_peak_month,
 				     const PetscReal* ahead_aadt, const PetscReal* speed_limit,
@@ -315,7 +317,7 @@ PetscErrorCode HighwaySetTrafficData(TSHighway highway, const PetscInt* num_entr
   PetscFunctionReturn(0);
 }
 
-
+#endif
 /*
   HighwayCreateJacobian - create (preallocate) Jacobian matrices for a highway section (at the start, in the middle, and at the end of the segment).
 
@@ -372,7 +374,7 @@ PetscErrorCode HighwayCreateJacobian(TSHighway highway, Mat* J_pre, Mat* J_out[]
   nz[1] = 2;
   rows[0] = 0; rows[1] = 1;
   cols[0] = 0; cols[1] = 1;
-  ierr = MatAIJSetPreallocation(J_highway[1], 0, nz);CHKERRQ(ierr);
+  ierr = MatSeqAIJSetPreallocation(J_highway[1], 0, nz);CHKERRQ(ierr);
   ierr = MatSetValues(J_highway[1], 2, rows, 2, cols, aa, INSERT_VALUES);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(J_highway[1], MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(J_highway[1], MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
@@ -389,7 +391,7 @@ PetscErrorCode HighwayCreateJacobian(TSHighway highway, Mat* J_pre, Mat* J_out[]
   nz[M-1] = 2;
  
   rows[0] = M-2; rows[1] = M-1;
-  ierr = MatAIJSetPreallocation(J_highway[2], 0, nz);CHKERRQ(ierr);
+  ierr = MatSeqAIJSetPreallocation(J_highway[2], 0, nz);CHKERRQ(ierr);
   ierr = MatSetValues(J_highway[2], 2, rows, 2, cols, aa, INSERT_VALUES);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(J_highway[2], MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(J_highway[2], MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
@@ -424,7 +426,6 @@ PetscErrorCode HighwayDestroyJacobian(TSHighway highway)
 PetscErrorCode HighwaySetUp(TSHighway highway)
 {
   PetscErrorCode ierr;
-  DMDALocalInfo  info;
 
   PetscFunctionBegin;
   ierr = DMDACreate1d(PETSC_COMM_SELF, DM_BOUNDARY_GHOSTED, highway->discrete_dimension, 2, 1, NULL, &(highway->da));CHKERRQ(ierr);
@@ -432,7 +433,7 @@ PetscErrorCode HighwaySetUp(TSHighway highway)
   ierr = DMDASetFieldName(highway->da, 0, "rho");CHKERRQ(ierr);
   ierr = DMDASetFieldName(highway->da, 1, "v");CHKERRQ(ierr);
   ierr = DMDASetUniformCoordinates(highway->da, 0, highway->length, 0, 0, 0, 0);CHKERRQ(ierr);
-  ierr = DMDACreateGlobalVector(highway->da, &(highway->X));CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(highway->da, &(highway->X));CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
@@ -446,7 +447,7 @@ PetscErrorCode HighwayExitCreate(TSHighwayExitCtx** exit, PetscReal postmile, TS
   (*exit)->postmile = postmile;
   (*exit)->type = exit_t;
   if(params){
-    (*exit)->params = *params;
+    (*exit)->prob_params = *params;
   }
   PetscFunctionReturn(0);
 }
@@ -530,7 +531,7 @@ PetscErrorCode HighwayLocalIFunction_LaxFriedrichs(TSHighway highway, DMDALocalI
   PetscErrorCode ierr;
   PetscInt       i, start, n, end;
   PetscReal      dx=highway->length/(info->mx - 1), dt=highway->dt;
-  PetscScalar    u_avg, xold_avg, dudrho,drho, rho0, rho1, u0, u1;
+  PetscScalar    xold_avg, old_u_avg, dudrho,drho, rho0, rho1, u0, u1;
   TSHighwayTrafficField *xold=highway->old_rho_v;
 
   PetscFunctionBegin;
@@ -547,7 +548,7 @@ PetscErrorCode HighwayLocalIFunction_LaxFriedrichs(TSHighway highway, DMDALocalI
     u1 = xold[i+1].v;
     } else {
       rho0 = rho_behind;
-      rho1 = xold[i+1];
+      rho1 = xold[i+1].rho;
       u0 = v_behind;
       u1 = xold[i+1].v;
       old_u_avg = 0.5 * (u0+u1);
@@ -575,12 +576,7 @@ PetscErrorCode HighwayLocalIFunction_LaxFriedrichs(TSHighway highway, DMDALocalI
     
     
   
-				     
-
-
-
-   
-#endif
+				 
 
   
 

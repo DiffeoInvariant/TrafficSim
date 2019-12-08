@@ -14,13 +14,13 @@ typedef enum {
 typedef struct {
   PetscReal lambda;
   PetscReal *samples;
-  PetscInt  nsamples=0;
+  PetscInt  nsamples;
 } TSExponentialDistribution;
 
 typedef struct {
   PetscReal lambda;
   PetscInt  *samples;
-  PetscInt  nsamples=0;
+  PetscInt  nsamples;
 } TSPoissonDistribution;
 
 
@@ -33,7 +33,7 @@ extern PetscErrorCode TSUniformSample(PetscReal*, PetscReal, PetscReal);
 
 struct _ts_DynamicExponentialDistribution {
 
-  PetscInt                                       num_timepoints=0;
+  PetscInt                                       num_timepoints;
 
   PetscInt*                                      timepoints;
 
@@ -49,7 +49,7 @@ struct _ts_DynamicExponentialDistribution {
 typedef struct _ts_DynamicExponentialDistribution TSDynamicExponentialDistribution;
 
 
-typedef enum {TS_LINEAR, TS_GENERALIZED_LOGISTIC, TS_DEFAULT,TS_DECIDE} TSSpeedDensityModel;
+typedef enum {TS_LINEAR_SD, TS_GENERALIZED_LOGISTIC, TS_DEFAULT,TS_DECIDE} TSSpeedDensityModel;
 
 extern PetscErrorCode TSSpeedFromLinearDensity(PetscReal*, PetscReal, PetscReal, PetscReal);
 

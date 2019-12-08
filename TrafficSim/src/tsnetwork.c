@@ -1,5 +1,6 @@
 #include "../include/tsnetwork.h"
-
+#include "../include/tsdensity.h"
+#include "../include/tshighway.h"
 PetscErrorCode TSNetworkCreate(MPI_Comm comm, TSNetwork* network){
   PetscErrorCode ierr;
   PetscFunctionBegin;
@@ -17,9 +18,9 @@ PetscErrorCode TSNetworkDestroy(TSNetwork network){
   ierr = PetscFree(network->edgelist);CHKERRQ(ierr);
   ierr = PetscFree(network->highways);CHKERRQ(ierr);
   ierr = PetscFree(network->vertices);CHKERRQ(ierr);
-  ierr = VecDestroy(network->l_X);CHKERRQ(ierr);
-  ierr = VecDestroy(network->l_dXdt);CHKERRQ(ierr);
-  ierr = DMDestroy(network->network);CHKERRQ(ierr);
+  ierr = VecDestroy(&network->l_X);CHKERRQ(ierr);
+  ierr = VecDestroy(&network->l_dXdt);CHKERRQ(ierr);
+  ierr = DMDestroy(&network->network);CHKERRQ(ierr);
   ierr = PetscFree(network);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
@@ -73,7 +74,7 @@ PetscErrorCode VertexGetArrivalRate(TSHighwayEntryCtx *vertex_ctx, PetscReal t, 
 
 PetscErrorCode VertexGetExitRate(TSHighwayExitCtx* vertex_ctx, PetscReal t, PetscReal* erate)
 {
-  TSExitParams     *epars;
+  TSExitParams     epars;
   PetscInt         n, i;
 
   PetscFunctionBegin;
@@ -81,13 +82,13 @@ PetscErrorCode VertexGetExitRate(TSHighwayExitCtx* vertex_ctx, PetscReal t, Pets
   if(vertex_ctx){
     if(vertex_ctx->type == TS_DYNAMIC_EXIT){
       epars = vertex_ctx->prob_params;
-      n = epars->n;
+      n = epars.n;
       for(i=0; i < 2*n - 3; i += 2){
 	/* find the time */
-	if(epars->params[i] <= t && epars->params[i+2] > t){
-	  *erate = epars->params[i+1];
-	} else if(epars->params[i+2] == t || (i == 2*n-4 && epars->params[i+2] < t)){
-	  *erate = epars->params[i+3];
+	if(epars.params[i] <= t && epars.params[i+2] > t){
+	  *erate = epars.params[i+1];
+	} else if(epars.params[i+2] == t || (i == 2*n-4 && epars.params[i+2] < t)){
+	  *erate = epars.params[i+3];
 	}
       }
     } else {
@@ -145,9 +146,9 @@ PetscErrorCode VertexGetDensityFactor(TSHighwayEntryCtx* vertex_ctx, TSHighwayEx
 
   PetscFunctionBegin;
 
-  ierr = VertexGetCurrentTrafficCount(rho, v, &ncurr);CHKERRQ(ierr);
+  ierr = VertexGetCurrentTrafficCount(rho, v, deltat, &ncurr);CHKERRQ(ierr);
   ierr = VertexGetNumArrivals(vertex_ctx, t, &nnew);CHKERRQ(ierr);
-  ierr = VertexGetExitRate(vertex_ectx, t, &erate);CHKERRQ(ierr);
+  ierr = VertexGetExitRate(vertex_exctx, t, &erate);CHKERRQ(ierr);
   ntot = (PetscInt)((1.0 - erate)*(PetscReal)ncurr) + nnew;
 
   new_density_factor = ((PetscReal)ntot)/((PetscReal)ncurr);
@@ -163,10 +164,9 @@ PetscErrorCode VertexGetDensityFactor(TSHighwayEntryCtx* vertex_ctx, TSHighwayEx
 PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network, PetscBool manual_jacobian)
 {
   PetscErrorCode ierr;
-  DM             netdm;
   PetscMPIInt    rank, size, tag=0;
-  PetscInt       i, e, v, l_nedges, l_nvertices, g_nedges, g_nvertices, estart, eend, vstart, vend, tag;
-  PetscInt       *eowners, *edgelists[1]=NULL, *edgelist = network->edgelist, *nvtx=NULL, *vtx_done=NULL;
+  PetscInt       i, e, v, l_nedges, l_nvertices, g_nedges, g_nvertices, estart, eend, vstart, vend;
+  PetscInt       *eowners, *edgelists[1]={NULL}, *edgelist = network->edgelist, *nvtx=NULL, *vtx_done=NULL;
   TSHighway       highway=NULL,highways=NULL;
   TSHighwayVertex vertex=NULL,vertices=NULL;
 
@@ -174,7 +174,7 @@ PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network, PetscBool m
   ierr = MPI_Comm_rank(comm, &rank);CHKERRQ(ierr);
   ierr = MPI_Comm_size(comm, &size);CHKERRQ(ierr);
 
-  g_ndeges = network->l_nedges;
+  g_nedges = network->l_nedges;
   g_nvertices = network->l_nvertices;
   /* everybody knows the number of local and global edges (and we store extra edges on rank 0) */
   ierr = MPI_Bcast(&g_nedges, 1, MPIU_INT, 0, comm);CHKERRQ(ierr);
@@ -183,7 +183,7 @@ PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network, PetscBool m
     l_nedges += g_nedges - size * (g_nedges/size);
   }
   network->g_nedges = g_nedges;
-  network->l_nedges = l_ndeges;
+  network->l_nedges = l_nedges;
 
   ierr = PetscCalloc3(size+1, &eowners, size, &nvtx, g_nvertices, &vtx_done);CHKERRQ(ierr);
   /*gather the number of local edges into eowners*/
@@ -236,7 +236,7 @@ PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network, PetscBool m
 
   edgelists[0] = edgelist;
   ierr = DMNetworkSetSizes(network->network, 1, &l_nvertices, &l_nedges, 0, NULL);CHKERRQ(ierr);
-  ierr = DMNetworkSetEdgeList(networkdm, edgelists, NULL);CHKERRQ(ierr);
+  ierr = DMNetworkSetEdgeList(network->network, edgelists, NULL);CHKERRQ(ierr);
   ierr = DMNetworkLayoutSetUp(network->network);CHKERRQ(ierr);
 
   ierr = DMNetworkGetVertexRange(network->network, &vstart, &vend);CHKERRQ(ierr);
@@ -275,9 +275,9 @@ PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network, PetscBool m
   /* distribute data and create vectors*/
   ierr = DMNetworkDistribute(&(network->network), 0);CHKERRQ(ierr);
   
-  ierr = DMCreateGlobalVector(network->network, network->g_X);CHKERRQ(ierr);
-  ierr = DMCreateLocalVector(network->network, network->l_X);CHKERRQ(ierr);
-  ierr = DMCreateLocalVector(network->network, network->l_dXdt);CHKERRQ(ierr);
+  ierr = DMCreateGlobalVector(network->network, &network->g_X);CHKERRQ(ierr);
+  ierr = DMCreateLocalVector(network->network, &network->l_X);CHKERRQ(ierr);
+  ierr = DMCreateLocalVector(network->network, &network->l_dXdt);CHKERRQ(ierr);
 
   /* set up highways after distribution*/
   ierr = DMNetworkGetVertexRange(network->network, &vstart, &vend);CHKERRQ(ierr);
@@ -299,9 +299,10 @@ PetscErrorCode TSNetworkDistribute(MPI_Comm comm, TSNetwork network, PetscBool m
     ierr = DMNetworkGetVertexRange(network->network, &vstart, &vend);CHKERRQ(ierr);
     Mat *jac;
     for(v = vstart; v < vend; ++v){
-      ierr = VertexCreateJacobian(network->network, v, NULL, &jac);CHKERRQ(ierr);
-      ierr = DMNetworkVertexSetMatrix(network->network, v, jac);CHKERRQ(ierr);
       ierr = DMNetworkGetComponent(network->network, v, 0, &network->vertex_key, (void**)&vertex);CHKERRQ(ierr);
+      ierr = VertexCreateJacobian(network->network, vertex, v, NULL, &jac);CHKERRQ(ierr);
+      ierr = DMNetworkVertexSetMatrix(network->network, v, jac);CHKERRQ(ierr);
+      
       vertex->jac = jac;
     }/* end loop over vertices */
   }
@@ -324,9 +325,10 @@ PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F,
   PetscInt       v, vstart, vend, e, estart, eend, nend;
   PetscBool      ghost;
   PetscScalar    *farr, *vtxf, *hwyf;
+  TSHighway       highway;
   TSHighwayVertex vertex;
   DMDALocalInfo  info;
-  TSHighwayTrafficField *hwyx, *hwyxdot, *vtxx, *vtxxfront;
+  TSHighwayTrafficField *hwyx, *hwyxdot, *vtxx;
   const PetscScalar *xarr, *xdotarr, *xoldarr;
   PetscReal      dt, density_factor;
 
@@ -349,12 +351,13 @@ PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F,
   ierr = DMGlobalToLocalBegin(netdm, X, INSERT_VALUES, lX);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(netdm, X, INSERT_VALUES, lX);CHKERRQ(ierr);
   
-  ierr = GlobalToLocalBegin(netdm, Xdot, INSERT_VALUES, lXdot);CHKERRQ(ierr);
-  ierr = GlobalToLocalEnd(netdm, Xdot, INSERT_VALUES, lXdot);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalBegin(netdm, Xdot, INSERT_VALUES, lXdot);CHKERRQ(ierr);
+  ierr = DMGlobalToLocalEnd(netdm, Xdot, INSERT_VALUES, lXdot);CHKERRQ(ierr);
 
   ierr = VecGetArrayRead(lX, &xarr);CHKERRQ(ierr);
   ierr = VecGetArrayRead(lXdot, &xdotarr);CHKERRQ(ierr);
   ierr = VecGetArrayRead(lXold, &xoldarr);CHKERRQ(ierr);
+  ierr = VecGetArray(lF, &farr);CHKERRQ(ierr);
 
   /* get vertex information */
   ierr = DMNetworkGetVertexRange(netdm, &vstart, &vend);CHKERRQ(ierr);
@@ -362,7 +365,7 @@ PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F,
     ierr = DMNetworkIsGhostVertex(netdm, v, &ghost);CHKERRQ(ierr);
     if(ghost) continue;
 
-    ierr = DMNetworkGetComponent(netdm, v, 0, &net->vertex_type, (void**)&vertex);CHKERRQ(ierr);
+    ierr = DMNetworkGetComponent(netdm, v, 0, &net->vertex_key, (void**)&vertex);CHKERRQ(ierr);
     ierr = DMNetworkGetVariableOffset(netdm, v, &var_offset);CHKERRQ(ierr);
 
     /* value of x = (rho, v) at the vertex */
@@ -406,7 +409,7 @@ PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F,
     vtxf = (PetscScalar*)(farr + offset_behind);
 
     ierr = DMDAGetLocalInfo(highway->da, &info);CHKERRQ(ierr);
-    ierr = HighwayLocalIFunction_LaxFriedrichs(highway, &info, hwyx, hwyxdot, hwyf,
+    ierr = HighwayLocalIFunction_LaxFriedrichs(highway, &info, t, hwyx, hwyxdot, hwyf,
 					       vertex->rho, vertex->v);CHKERRQ(ierr);
     
     /* evaluate behind boundary */
@@ -415,7 +418,7 @@ PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F,
 
     ierr = DMNetworkGetComponent(netdm, vahead, 0, &net->vertex_key, (void**)&vertex);CHKERRQ(ierr);
     vtxx = (TSHighwayTrafficField*)(xarr + offset_ahead);
-    vtxf = (PetscScalar*)(farr + offser_ahead);
+    vtxf = (PetscScalar*)(farr + offset_ahead);
     nend = highway->discrete_dimension - 1;
     /*evaluate ahead boundary */
     hwyf[2*nend] = hwyx[nend].rho - vtxx[0].rho;
@@ -424,6 +427,7 @@ PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F,
 
   ierr = VecRestoreArrayRead(lX, &xarr);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(lXdot, &xdotarr);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(lXold, &xoldarr);CHKERRQ(ierr);
   ierr = VecRestoreArray(lF, &farr);CHKERRQ(ierr);
   
   ierr = DMLocalToGlobalBegin(netdm, lF, ADD_VALUES, F);CHKERRQ(ierr);
@@ -443,8 +447,8 @@ PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F,
 PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, PetscInt network_case, const char* filename)
 {
   PetscErrorCode     ierr;
-  PetscInt           nhighway, nentry, nexit, ninterchange,nvertices, nlane;
-  PetscInt           district, glob_id, i, discrete_dimension, *edgelist;
+  PetscInt           nentry, nexit, ninterchange,nvertices, nedges;
+  PetscInt           i, *edgelist;
   PetscMPIInt        size, rank;
   TSNetwork          net=NULL;
   TSHighway          highways=NULL;
@@ -452,23 +456,25 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
   TSInterchangeCtx*  interchanges=NULL;
   TSHighwayEntryCtx* entries=NULL;
   TSHighwayExitCtx*  exits=NULL;
-  TSRoadDirection    direction;
-  PetscReal          speed_lim, *arrival_params=NULL, *exit_params=NULL;
+  /*TSRoadDirection    direction;*/
+  PetscReal          *arrival_params=NULL, *exit_params=NULL;
   TSExitParams       epars1, epars2, epars3, epars4, epars5;
-  PetscBool          ts_distribute;
+  PetscBool          ts_distribute, manual_jacobian;
   MPI_Comm           comm;
 
   PetscFunctionBegin;
+
+  ierr = PetscObjectGetComm((PetscObject)(*netdm), &comm);CHKERRQ(ierr);
 
   ierr = MPI_Comm_rank(comm, &rank);CHKERRQ(ierr);
   ierr = MPI_Comm_size(comm, &size);CHKERRQ(ierr);
   ierr = PetscCalloc1(1, &net);CHKERRQ(ierr);
 
   ierr = DMNetworkCreate(PETSC_COMM_WORLD, netdm);CHKERRQ(ierr);
-  ierr = PetscObjectGetComm((PetscObject)(*netdm), &comm);CHKERRQ(ierr);
+  
 
-  ierr = DMNetworkRegisterComponent((*netdm), "HighwayStruct", sizeof(struct _ts_HighwayCtx), &((*net)->highway_key));CHKERRQ(ierr);
-  ierr = DMNetworkRegisterComponent((*netdm), "HighwayVertexStruct", sizeof(struct _ts_HighwayVertex), &((*net)->vertex_key));CHKERRQ(ierr);
+  ierr = DMNetworkRegisterComponent((*netdm), "HighwayStruct", sizeof(struct _ts_HighwayCtx), &(net->highway_key));CHKERRQ(ierr);
+  ierr = DMNetworkRegisterComponent((*netdm), "HighwayVertexStruct", sizeof(struct _ts_HighwayVertex), &(net->vertex_key));CHKERRQ(ierr);
   
   net->comm = comm;
   net->network = *netdm;
@@ -502,9 +508,9 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
     nedges = 8;
     nvertices = 7;
     if(!rank){
-      nedges = net->g_ndeges;
+      nedges = net->g_nedges;
       nvertices = net->g_nvertices;
-      ierr = PetscCalloc1(2 * g_nedges, &edgelist);CHKERRQ(ierr);
+      ierr = PetscCalloc1(2 * net->g_nedges, &edgelist);CHKERRQ(ierr);
       edgelist[0] = 0; edgelist[1] = 1; /* H0 */
       edgelist[2] = 1; edgelist[3] = 2; /*H1 */
       edgelist[4] = 2; edgelist[5] = 3; /* H2 */
@@ -515,7 +521,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
       edgelist[14] = 6; edgelist[15] = 0; /* H7 */
 
       /* allocate highways and vertices, incl entries, exits, and interchanges */
-      ninterchange = nvertex + 2;
+      ninterchange = nvertices + 2;
       ierr = PetscCalloc2(nvertices, &vertices,
 			  nedges, &highways);CHKERRQ(ierr);
       
@@ -556,8 +562,8 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 						       which is stupid and unsafe (since I now
 						       have to ensure that nobody changes anybody
 						       else's arrival parameters, but eh, whatever for now).*/
-	  vertices[i].entr_ctx = entries[i];
-	  highways[i].entries = entries[i];
+	  vertices[i].entr_ctx = &entries[i];
+	  highways[i].entries = &entries[i];
 	  vertices[i].arrival_dist = TS_POISSON_DYNAMIC;
 
 	  exits[i].postmile = 0.0;
@@ -574,7 +580,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  epars1.params = exit_params;
 	  exits[i].prob_params = epars1;
 	  highways[7].exits = exits;
-	  vertices[i].exit_ctx = exits[i];
+	  vertices[i].exit_ctx = &exits[i];
 	  highways[i].num_lanes = 4;
 	  highways[i].speed_limit=70.0;
 	  vertices[0].speed_limit = 70.0;
@@ -606,8 +612,8 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  arrival_params[8 * i + 6] = 9.0; arrival_params[8 * i + 7] = 43.0;
 	  entries[i].arrival_params = arrival_params + 8 * i;/* hey, we're adding some pointer arithmetic to this unholy assignment protocol we're using for the arrival/exit parameters. Why? Because the universe hates you, that's why.*/
 	  
-	  vertices[i].entr_ctx = entries[i];
-	  highways[i].entries = entries[i];
+	  vertices[i].entr_ctx = &entries[i];
+	  highways[i].entries = &entries[i];
 	  vertices[i].arrival_dist = TS_POISSON_DYNAMIC;
 
 	  exits[i].postmile = 10.0;
@@ -624,7 +630,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  epars2.params = exit_params + 8 * i;
 	  exits[i].prob_params = epars2;
 	  
-	  vertices[i].exit_ctx = exits[i];
+	  vertices[i].exit_ctx = &exits[i];
 	  highways[0].exits = exits + i;
 	  highways[1].num_lanes = 3;
 	  highways[1].speed_limit=70.0;
@@ -665,7 +671,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  interchanges[4].entry_road_id = 3;
 	  interchanges[4].postmile = 28.0;
 	  vertices[i].intc_ctx = interchanges + 4;/* pointer arithmetic */
-	  highways[2].interchanges2 = interchanges2 = interchanges + 4;
+	  highways[2].interchanges2 = interchanges + 4;
 	  highways[3].interchanges = interchanges + 4;
 	  highways[3].length = 12.0;
 	  highways[3].num_lanes = 3;
@@ -685,7 +691,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  arrival_params[8 * 2 + 4] = 5.0; arrival_params[8 * 2 + 5] = 9.0;
 	  arrival_params[8 * 2 + 6] = 9.0; arrival_params[8 * 2 + 7] = 3.0;
 	  entries[2].arrival_params = arrival_params + 8 * 2;/* hey, we're adding some pointer arithmetic to this unholy assignment protocol we're using for the arrival/exit parameters. Why? Because the universe hates you, that's why.*/
-	  vertices[i].entr_ctx = entries[2];
+	  vertices[i].entr_ctx = entries + 2;
 	  vertices[i].arrival_dist = TS_POISSON_DYNAMIC;
 	  highways[3].entries = entries + 2;
 	  
@@ -703,7 +709,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  epars3.params = exit_params + 8 * 2;
 	  exits[2].prob_params = epars3;
 	  highways[2].exits = exits + 2;
-	  vertices[i].exit_ctx = exits[2];
+	  vertices[i].exit_ctx = exits +2;
 	  break;
 	 case 4:
 	  /* V4, one interchange, one exit, one entry */
@@ -731,7 +737,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  arrival_params[8 * 3 + 4] = 5.0; arrival_params[8 * 3 + 5] = 9.0;
 	  arrival_params[8 * 3 + 6] = 9.0; arrival_params[8 * 3 + 7] = 3.0;
 	  entries[3].arrival_params = arrival_params + 8 * 3;/* hey, we're adding some pointer arithmetic to this unholy assignment protocol we're using for the arrival/exit parameters. Why? Because the universe hates you, that's why.*/
-	  vertices[i].entr_ctx = entries[3];
+	  vertices[i].entr_ctx = entries + 3;
 	  highways[5].entries = entries + 3;
 	  vertices[i].arrival_dist = TS_POISSON_DYNAMIC;
 
@@ -749,7 +755,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  epars4.params = exit_params + 8 * 3;
 	  exits[3].prob_params = epars4;
 	  highways[3].exits = exits + 3;
-	  vertices[i].exit_ctx = exits[3];
+	  vertices[i].exit_ctx = exits + 3;
 	  break;
 	case 5:
 	/* V5, two interchanges, no exits or entries */
@@ -798,7 +804,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  arrival_params[8 * 4 + 4] = 5.0; arrival_params[8 * 4 + 5] = 9.0;
 	  arrival_params[8 * 4 + 6] = 9.0; arrival_params[8 * 4 + 7] = 3.0;
 	  entries[4].arrival_params = arrival_params + 8 * 3;/* hey, we're adding some pointer arithmetic to this unholy assignment protocol we're using for the arrival/exit parameters. Why? Because the universe hates you, that's why.*/
-	  vertices[i].entr_ctx = entries[4];
+	  vertices[i].entr_ctx = entries + 4;
 	  vertices[i].arrival_dist = TS_POISSON_DYNAMIC;
 	  highways[7].entries = entries + 4;
 	  highways[7].exits = exits;
@@ -817,11 +823,11 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  exits[4].prob_params = epars5;
 
 	  highways[6].exits = exits + 4;
-	  vertices[i].exit_ctx = exits[4];
+	  vertices[i].exit_ctx = exits + 4;
 	  break;
 
         default:
-	  SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_WRONG,"Wrong value of i in TSNetworkCreateWithStructure (from line 385).");
+	  SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_WRONG,"Wrong value of i in TSNetworkCreateWithStructure (from line 826).");
 
 	}
       }/*end vertex for*/
@@ -833,7 +839,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 
 
   default:
-         SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_WRONG,"Wrong value of i in TSNetworkCreateWithStructure (from line 394).");
+         SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_WRONG,"Wrong value of i in TSNetworkCreateWithStructure (from line 838).");
     } /* end network case switch */
  
   for(i=0; i < nedges; ++i){
@@ -850,14 +856,15 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 
    ierr = PetscOptionsGetBool(NULL, NULL, "-ts_distribute", &ts_distribute, NULL);CHKERRQ(ierr);
    if(ts_distribute){
-     ierr = TSNetworkDistribute(comm, net);CHKERRQ(ierr);
+     ierr = PetscOptionsGetBool(NULL, NULL, "-manual_jacobian", &manual_jacobian, NULL);CHKERRQ(ierr);
+     ierr = TSNetworkDistribute(comm, net, manual_jacobian);CHKERRQ(ierr);
    }
      
   PetscFunctionReturn(0);
 }
   
 
-PetscErrorCode VertexCreateJacobian(DM dm, TSHighwayVertex vertex, PetscInt v, Mat* Jpre);
+PetscErrorCode VertexCreateJacobian(DM dm, TSHighwayVertex vertex, PetscInt v, Mat* Jpre, Mat *J[])
 {
   PetscErrorCode ierr;
   Mat            *vjac;

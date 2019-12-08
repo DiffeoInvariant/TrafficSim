@@ -50,7 +50,7 @@ typedef enum {
 /* struct to hold params for multi-parameter distribution; TODO: maybe put this in the .c file? */
 struct _ts_multiparams{
   PetscInt   n;
-  PetscReal* params=NULL;
+  PetscReal* params;/*=NULL;*/
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _ts_multiparams TSExitParams;
@@ -74,10 +74,10 @@ extern PetscErrorCode HighwayExitSetParams(TSHighwayExitCtx* exit, PetscInt npar
 
 struct _ts_InterchangeCtx{
 
-  PetscInt  exit_road_id=-1; /* id for the road you're leaving */
-  PetscInt  entry_road_id=-1; /* id for the road you're entering */
-  PetscReal postmile=-1.0; /* posted mile marker location*/
-  PetscReal continue_p = 1.0; /* probability that a car will go through this interchange,
+  PetscInt  exit_road_id;/*=-1;  id for the road you're leaving */
+  PetscInt  entry_road_id;/*=-1;  id for the road you're entering */
+  PetscReal postmile;/*=-1.0;  posted mile marker location*/
+  PetscReal continue_p;/* = 1.0;  probability that a car will go through this interchange,
 				 only relevant if this interchange is part of a split vertex*/
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
@@ -99,14 +99,14 @@ typedef struct {
 
 struct _ts_HighwayIdenfication {
   
-  PetscInt           district=-1; /* district ID (e.g. in CA, comes from Caltrans)*/
+  PetscInt           district;/*=-1;  district ID (e.g. in CA, comes from Caltrans)*/
   TSRoadDirection    direction;
-  PetscReal          postmile=-1.0;
-  PetscInt           city_name_length = 0;
+  PetscReal          postmile;/*=-1.0;*/
+  PetscInt           city_name_length;/* = 0;*/
   char               city_name[TS_MAX_CITY_NAME_LEN];
   char               county[TS_COUNTY_NAME_LEN];
   /*if two letters, add a trailing X (e.g. LA -> LAX)*/
-  PetscInt           name_length = 0;
+  PetscInt           name_length;/* = 0;*/
   char               name[TS_MAX_ROAD_NAME_LEN];
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
@@ -114,12 +114,12 @@ typedef struct _ts_HighwayIdentification TSHighwayIdentification;
 
 
 struct _ts_HighwayTrafficData {
-  PetscReal          back_peak_hour=-1;
-  PetscReal          back_peak_month=-1;
-  PetscReal          back_aadt=-1; /* aadt = annual average daily traffic*/
-  PetscReal          ahead_peak_hour=-1;
-  PetscReal          ahead_peak_month=-1;
-  PetscReal          ahead_aadt=-1;
+  PetscReal          back_peak_hour;/*=-1;*/
+  PetscReal          back_peak_month;/*=-1;*/
+  PetscReal          back_aadt;/*=-1;  aadt = annual average daily traffic*/
+  PetscReal          ahead_peak_hour;/*=-1;*/
+  PetscReal          ahead_peak_month;/*=-1;*/
+  PetscReal          ahead_aadt;/*=-1;*/
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _ts_HighwayTrafficData TSHighwayTrafficData;
@@ -132,22 +132,22 @@ struct _ts_HighwayCtx{
   TSHighwayIdentification* id_info;
 
   /* size and location data */
-  PetscReal                length=-1; /* total length of this highway */
-  PetscInt                 num_entries=0;
-  TSHighwayEntryCtx*       entries=NULL;
-  PetscInt                 num_exits=0;
-  TSHighwayExitCtx*        exits=NULL;
-  PetscInt                 num_interchanges=1;/* num interchanges per pointer below (if allocated)*/
-  TSInterchangeCtx*        interchanges=NULL;
-  TSInterchangeCtx*        interchanges2=NULL;
-  TSInterchangeCtx*        interchanges3=NULL;
-  PetscReal                speed_limit=-1, rho_limit=-1;
-  PetscInt                 num_lanes=-1;
+  PetscReal                length;/*=-1;  total length of this highway */
+  PetscInt                 num_entries;/*=0;*/
+  TSHighwayEntryCtx*       entries;/*=NULL;*/
+  PetscInt                 num_exits;/*=0;*/
+  TSHighwayExitCtx*        exits;/*=NULL;*/
+  PetscInt                 num_interchanges;/*=1; num interchanges per pointer below (if allocated)*/
+  TSInterchangeCtx*        interchanges;/*=NULL;*/
+  TSInterchangeCtx*        interchanges2;/*=NULL;*/
+  TSInterchangeCtx*        interchanges3;/*=NULL;*/
+  PetscReal                speed_limit, rho_limit;
+  PetscInt                 num_lanes;
   /* recorded traffic data */
   TSHighwayTrafficData*    traffic_data;
 
   /* simulation data */
-  TSSpeedDensityModel      speed_density=TS_DEFAULT;
+  TSSpeedDensityModel      speed_density;
   TSHighwayTrafficBoundary bc;
   Vec                      X;
   TSHighwayTrafficField    *old_rho_v;
@@ -160,13 +160,14 @@ struct _ts_HighwayCtx{
 
 typedef struct _ts_HighwayCtx* TSHighway;
 
+
 extern PetscErrorCode HighwayCreate(MPI_Comm, TSHighway*);
 
-extern PetscErrorCode HighwayDestroy(MPI_Comm, TSHighway*);
+/*extern PetscErrorCode HighwayDestroy(TSHighway*);*/
 
-/*extern PetscErrorCode HighwayCreateJacobian(TSHighway, Mat*, Mat*[]);
+extern PetscErrorCode HighwayCreateJacobian(TSHighway, Mat*, Mat*[]);
 
-  extern PetscErrorCode HighwayDestroyJacobian(TSHighway);*/
+extern PetscErrorCode HighwayDestroyJacobian(TSHighway);
 
 extern PetscErrorCode HighwayComputeSpeedFromDensity(TSHighway, TSSpeedDensityModel);
 
@@ -177,7 +178,10 @@ extern PetscErrorCode HighwayGetCurrentSpeed(TSHighway, PetscInt, PetscReal*, TS
 /* flux is speed times density, and can be integrated and compared to counts */
 extern PetscErrorCode HighwayGetCurrentFlux(TSHighway, PetscInt, PetscReal*, TSSpeedDensityModel);
 
-extern PetscErrorCode HighwayLocalIFunction(TSHighway,DMDALocalInfo *, PetscReal, PipeField *, PipeField *, PetscScalar *);
+extern PetscErrorCode HighwayLocalIFunction_LaxFriedrichs(TSHighway highway, DMDALocalInfo *info,
+				     PetscReal t, TSHighwayTrafficField *x,
+						   TSHighwayTrafficField *xdot, PetscScalar *f,
+						   PetscReal rho_behind, PetscReal v_behind);
 
 extern PetscErrorCode HighwaySetIdentification(TSHighway, const PetscInt*, const TSRoadDirection*,
 					       const PetscReal*, const PetscReal*, const PetscInt*,
@@ -208,7 +212,7 @@ extern PetscErrorCode HighwaySetCounty(TSHighway, const char*);
 
 extern PetscErrorCode HighwaySetCity(TSHighway, const char*, PetscInt);
 
-extern PetscErrorCode HighwaySetName(TSHighway const char*, PetscInt);
+extern PetscErrorCode HighwaySetName(TSHighway, const char*, PetscInt);
 
 extern PetscErrorCode HighwaySetBackPeakHour(TSHighway, PetscReal);
 
