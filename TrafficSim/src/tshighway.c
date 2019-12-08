@@ -515,15 +515,20 @@ PETSC_STATIC_INLINE PetscScalar drhodx(TSHighwayTrafficField *x, PetscInt i, Pet
 }
      
     
+/* highway local IFunction using an explicit first-order Lax-Friedrichs scheme.
+   Note: this is a very bad scheme for this problem and its initial conditions 
+   (for ex., it has strong dissipation and dispersion (Chu, C. K. (1978), Numerical Methods in Fluid Mechanics, Advances in Applied Mechanics, 18, Page 304), particularly for initial/boundary conditions with discontinuities (Thomas, J. W. (1995), Numerical Partial Differential Equations: Finite Difference Methods, Texts in Applied Mathematics, 22, Sec. 7.8)). 
 
-PetscErrorCode HighwayLocalIFunction(TSHighway highway, DMDALocalInfo *info,
+   However, it can be extended and turned into a higher-order method relatively easily, and if the boundary conditions are sufficiently smooth, we know that the method will be stable iff
+   |u(rho) * dt/dx| <= 1 (which is to say, iff |dt| <= dx/max(u(rho)) (usually = lim_{r->0}(dx/u(r)))) */
+PetscErrorCode HighwayLocalIFunction_LaxFriedrichs(TSHighway highway, DMDALocalInfo *info,
 				     PetscReal t, TSHighwayTrafficField *x,
 				     TSHighwayTrafficField *xdot, PetscScalar *f)
 {
   PetscErrorCode ierr;
   PetscInt       i, start, n, end;
   PetscReal      dx=highway->length/(info->mx - 1), dt=highway->dt;
-  PetscScalar    u_avg, xold_avg, dudrho, rho0, rho1, u0, u1;
+  PetscScalar    u_avg, xold_avg, dudrho,drho, rho0, rho1, u0, u1;
   TSHighwayTrafficField *xold=highway->old_rho_v;
 
   PetscFunctionBegin;
@@ -539,15 +544,17 @@ PetscErrorCode HighwayLocalIFunction(TSHighway highway, DMDALocalInfo *info,
     u1 = xold[i+1].v;
 
     xold_avg = 0.5*(rho0 + rho1);
-    /*drho/dt + u(rho)*drho/dx = 0 */
-    f[2*(i-1) + 2] = (x[i].rho - xold_avg) + dt * old_u_avg * drhodx(xold, i, end, dx);
-    /* du/dt = du/drho * drho/dt*/
+    drho = (x[i].rho - xold_avg);
+    /*drho + u(rho)*drho/dx*dt = 0 */
+    f[2*(i-1) + 2] = drho + dt * old_u_avg * drhodx(xold, i, end, dx);
+    
     ierr = TSSpeedDerivativeFromLinearDensity(&dudrho, highway->speed_limit, highway->rho_limit);CHKERRQ(ierr);
-    f[2*(i-1)+3] = dudrho * f[2*(i-1)+2];
+    /* du - du/drho * drho = 0*/
+    f[2*(i-1)+3] = (x[i].v - old_u_avg) - dudrho * drho;
   }
 
-  /* boundary points */
-
+  /* boundary points, apply characteristic equation here */
+  
     
     
     
