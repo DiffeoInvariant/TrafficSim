@@ -503,10 +503,11 @@ PetscErrorCode HighwayEntryCreate(TSHighwayEntryCtx** entry, const PetscReal pos
  }
 
 
-PETSC_STATIC_INLINE PetscScalar drhodx(TSHighwayTrafficField *x, PetscInt i, PetscInt end, PetscReal dx)
+PETSC_STATIC_INLINE PetscScalar drhodx(TSHighwayTrafficField *x, PetscInt i, PetscInt end, PetscReal dx,
+				       PetscReal rho_back)
 {
   if(i == 0){
-     return (x[i+1].rho - x[i-1].rho)/dx;
+    return (x[i+1].rho - rho_back)/(2*dx);
   } else if(i == end){
     return (x[i].rho - x[i-1].rho)/dx;
   } else {
@@ -523,7 +524,8 @@ PETSC_STATIC_INLINE PetscScalar drhodx(TSHighwayTrafficField *x, PetscInt i, Pet
    |u(rho) * dt/dx| <= 1 (which is to say, iff |dt| <= dx/max(u(rho)) (usually = lim_{r->0}(dx/u(r)))) */
 PetscErrorCode HighwayLocalIFunction_LaxFriedrichs(TSHighway highway, DMDALocalInfo *info,
 				     PetscReal t, TSHighwayTrafficField *x,
-				     TSHighwayTrafficField *xdot, PetscScalar *f)
+						   TSHighwayTrafficField *xdot, PetscScalar *f,
+						   PetscReal rho_behind, PetscReal v_behind)
 {
   PetscErrorCode ierr;
   PetscInt       i, start, n, end;
@@ -534,19 +536,26 @@ PetscErrorCode HighwayLocalIFunction_LaxFriedrichs(TSHighway highway, DMDALocalI
   PetscFunctionBegin;
 
   ierr = DMDAGetCorners(highway->da, &start, 0, 0, &n, 0, 0);CHKERRQ(ierr);
-  end = start + n - 1;
+  end = start + n;
   /* interior points*/
-  for(i = start+1; i < end; ++i){
+  for(i = start; i < end; ++i){
+    if(i > 0){
     old_u_avg = (xold[i+1].v + xold[i-1].v) * 0.5;
     rho0 = xold[i-1].rho;
     rho1 = xold[i+1].rho;
     u0 = xold[i-1].v;
     u1 = xold[i+1].v;
-
+    } else {
+      rho0 = rho_behind;
+      rho1 = xold[i+1];
+      u0 = v_behind;
+      u1 = xold[i+1].v;
+      old_u_avg = 0.5 * (u0+u1);
+    }
     xold_avg = 0.5*(rho0 + rho1);
     drho = (x[i].rho - xold_avg);
     /*drho + u(rho)*drho/dx*dt = 0 */
-    f[2*(i-1) + 2] = drho + dt * old_u_avg * drhodx(xold, i, end, dx);
+    f[2*(i-1) + 2] = drho + dt * old_u_avg * drhodx(xold, i, end, dx, rho_behind);
     
     ierr = TSSpeedDerivativeFromLinearDensity(&dudrho, highway->speed_limit, highway->rho_limit);CHKERRQ(ierr);
     /* du - du/drho * drho = 0*/
@@ -554,6 +563,13 @@ PetscErrorCode HighwayLocalIFunction_LaxFriedrichs(TSHighway highway, DMDALocalI
   }
 
   /* boundary points, apply characteristic equation here */
+
+  /* NOTE: above is temporoary "solution" using above method and extra boundary information. probably need to fix */
+
+  /* TODO: THAT ^ */
+
+  PetscFunctionReturn(0);
+}
   
     
     

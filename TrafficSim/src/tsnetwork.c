@@ -326,7 +326,7 @@ PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F,
   PetscScalar    *farr, *vtxf, *hwyf;
   TSHighwayVertex vertex;
   DMDALocalInfo  info;
-  TSHighwayTrafficField *hwyx, *hwyxdot, *vtxx;
+  TSHighwayTrafficField *hwyx, *hwyxdot, *vtxx, *vtxxfront;
   const PetscScalar *xarr, *xdotarr, *xoldarr;
   PetscReal      dt, density_factor;
 
@@ -369,7 +369,8 @@ PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F,
     vtxx = (TSHighwayTrafficField*)(xarr + var_offset);
     /* value of F at the vertex */
     vtxf = (PetscScalar*)(farr + var_offset);
-    /* drho/dt */
+    /* drho/dt: NOTE: THIS FUNCTION (VertexGetDensityFactor) IS WHERE THE RANDOMNESS
+     HAPPENS.*/
     ierr = VertexGetDensityFactor(vertex->entr_ctx, vertex->exit_ctx, vtxx[0].rho, vtxx[0].v, t, dt, &density_factor);CHKERRQ(ierr);
 
     vtxf[0] = (density_factor - 1.0) * vtxx[0].rho;
@@ -393,6 +394,44 @@ PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F,
     highway->dt = dt;
     highway->old_rho_v = (TSHighwayTrafficField*)(xoldarr + var_offset);
 
+    /*boundary values from connected vertices */
+    ierr = DMNetworkGetConnectedVertices(netdm, e, &conn_comp);CHKERRQ(ierr);
+    vbehind = conn_comp[0];
+    vahead = conn_comp[1];
+    ierr = DMNetworkGetVariableOffset(netdm, vbehind, &offset_behind);CHKERRQ(ierr);
+    ierr = DMNetworkGetVariableOffset(netdm, vahead, &offset_ahead);CHKERRQ(ierr);
+
+    ierr = DMNetworkGetComponent(netdm, vbehind, 0, &net->vertex_key, (void**)&vertex);CHKERRQ(ierr);
+    vtxx = (TSHighwayTrafficField*)(xarr + offset_behind);
+    vtxf = (PetscScalar*)(farr + offset_behind);
+
+    ierr = DMDAGetLocalInfo(highway->da, &info);CHKERRQ(ierr);
+    ierr = HighwayLocalIFunction_LaxFriedrichs(highway, &info, hwyx, hwyxdot, hwyf,
+					       vertex->rho, vertex->v);CHKERRQ(ierr);
+    
+    /* evaluate behind boundary */
+    hwyf[0] = hwyx[0].rho - vtxx[0].rho;
+    vtxf[0] -= hwyx[0].rho * hwyx[0].v;
+
+    ierr = DMNetworkGetComponent(netdm, vahead, 0, &net->vertex_key, (void**)&vertex);CHKERRQ(ierr);
+    vtxx = (TSHighwayTrafficField*)(xarr + offset_ahead);
+    vtxf = (PetscScalar*)(farr + offser_ahead);
+    nend = highway->discrete_dimension - 1;
+    /*evaluate ahead boundary */
+    hwyf[2*nend] = hwyx[nend].rho - vtxx[0].rho;
+    vtxf[0] += hwyx[2*nend].rho * hwyx[2*nend].v;
+  }/*end loop over edges */
+
+  ierr = VecRestoreArrayRead(lX, &xarr);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(lXdot, &xdotarr);CHKERRQ(ierr);
+  ierr = VecRestoreArray(lF, &farr);CHKERRQ(ierr);
+  
+  ierr = DMLocalToGlobalBegin(netdm, lF, ADD_VALUES, F);CHKERRQ(ierr);
+  ierr = DMLocalToGlobalEnd(netdm, lF, ADD_VALUES, F);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(netdm, &lF);CHKERRQ(ierr);
+
+  PetscFunctionReturn(0);
+}
     
 
     
