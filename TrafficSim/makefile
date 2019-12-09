@@ -20,3 +20,6 @@ TSimLib: $(TS_C_IMPLS)
 	$(TS_CC) $(TS_COPTS) -I $(TS_C_INCL) $(TS_C_IMPLS) -o libtsim.so $(PETSC_CC_INCLUDES) -L $(PETSC_DIR)/$(PETSC_ARCH)/lib/ -lpetsc -lmpi -lm -ldl
 
 all: $(TARGETS)
+
+Test: tests/tslibtest.c
+	$(TS_CC) $(TS_COPTS) -I $(TS_C_INCL) $(TS_C_IMPLS) tests/tslibtest.c -o tslibtest $(PETSC_CC_INCLUDES) -L$(PETSC_DIR)/$(PETSC_ARCH)/lib/ -L$(TS_C_DIR)/-lpetsc -lmpi -lm -ldl

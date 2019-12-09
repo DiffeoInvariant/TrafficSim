@@ -444,7 +444,7 @@ PetscErrorCode TSHighwayNetIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F,
   
 
 
-PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, PetscInt network_case, const char* filename)
+PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, PetscInt network_case, PetscInt nodes_per_highway, const char* filename)
 {
   PetscErrorCode     ierr;
   PetscInt           nentry, nexit, ninterchange,nvertices, nedges;
@@ -544,6 +544,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  highways[0].interchanges = interchanges;
 	  highways[7].interchanges = interchanges;
 	  highways[0].length = 10.0;
+          highways[0].discrete_dimension = nodes_per_highway;
 	  
 	  entries[i].postmile = 0.0;
 	  entries[i].arrival_dist = TS_POISSON_DYNAMIC;
@@ -633,6 +634,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  vertices[i].exit_ctx = &exits[i];
 	  highways[0].exits = exits + i;
 	  highways[1].num_lanes = 3;
+          highways[1].discrete_dimension = nodes_per_highway;
 	  highways[1].speed_limit=70.0;
 	  vertices[1].speed_limit=70.0;
 	  vertices[1].rho_limit = 10.0;
@@ -664,6 +666,8 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  highways[4].speed_limit = 55.0;
 	  highways[2].length = 8.0;
 	  highways[4].length = 12.0;
+          highways[2].discrete_dimension = nodes_per_highway;
+          highways[4].discrete_dimension = nodes_per_highway;
 	  break;
 	case 3:
 	  /* V3, one interchange, one exit, one entry */
@@ -722,6 +726,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  highways[5].length = 8.0;
 	  highways[5].num_lanes = 3.0;
 	  highways[5].speed_limit = 65.0;
+          highways[5].discrete_dimension = nodes_per_highway;
 	  vertices[i].speed_limit = 65.0;
 	  vertices[i].rho_limit = 10.0;
 	  entries[3].postmile = 40.0;
@@ -775,6 +780,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  highways[6].num_lanes = 3;
 	  highways[6].length = 20.0;
 	  highways[6].speed_limit = 65.0;
+          highways[6].discrete_dimension = nodes_per_highway;
 	  vertices[i].speed_limit = 65.0;
 	  vertices[i].rho_limit = 10.0;
 	  break;
@@ -790,6 +796,7 @@ PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, Petsc
 	  vertices[i].speed_limit = 70.0;
 	  vertices[i].rho_limit = 10.0;
 	  highways[7].length = 12.0;
+          highways[7].discrete_dimension = nodes_per_highway;
 	  
 	  entries[4].postmile = 68.0;
 	  entries[4].arrival_dist = TS_POISSON_DYNAMIC;
@@ -952,3 +959,75 @@ PetscErrorCode VertexCreateJacobian(DM dm, TSHighwayVertex vertex, PetscInt v, M
   
 }
 
+static PetscErrorCode TSNetworkHighwaySetSolution(TSHighway highway, PetscReal rho)
+{
+  PetscErrorCode ierr;
+  TSHighwayTrafficField *x;
+  PetscInt       i, start, n, end;
+
+  PetscFunctionBegin;
+  ierr = DMDAVecGetArray(highway->da, highway->X, &x);CHKERRQ(ierr);
+  ierr = DMDAGetCorners(highway->da, &start, 0, 0, &n, 0, 0);CHKERRQ(ierr);
+
+  end = start + n;
+  for(i = start; i < end; ++i){
+    x[i].rho = 0.0;
+    x[i].v = highway->speed_limit;
+  }
+
+  ierr = DMDAVecRestoreArray(highway->da, highway->X, &x);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+  
+  
+
+PetscErrorCode TSNetworkSetSolution(TSNetwork network, DM netdm, Vec X)
+{
+  PetscErrorCode ierr;
+  PetscInt       i, n, vstart, vend, offsetstart, offsetend, var_offset;
+  PetscInt       e, estart, eend;
+  Vec            lX;
+  PetscScalar    *xarr;
+  TSHighway      highway;
+  const PetscInt *conn_comp;
+  const PetscScalar *xarrview;
+
+  PetscFunctionBegin;
+
+  ierr = VecSet(X, 0.0);CHKERRQ(ierr);
+  ierr = DMGetLocalVector(netdm, &lX);CHKERRQ(ierr);
+  ierr = VecGetArray(lX, &xarr);CHKERRQ(ierr);
+
+  ierr = DMNetworkGetEdgeRange(netdm, &estart, &eend);CHKERRQ(ierr);
+  for(e = estart; e < eend; ++e){
+    ierr = DMNetworkGetVariableOffset(netdm, e, &var_offset);CHKERRQ(ierr);
+    ierr = DMNetworkGetComponent(netdm, e, 0, &network->highway_key, (void**)&highway);CHKERRQ(ierr);
+    ierr = TSNetworkHighwaySetSolution(highway, 0.0);CHKERRQ(ierr);
+
+    ierr = VecGetSize(highway->X, &n);CHKERRQ(ierr);
+    ierr = VecGetArrayRead(highway->X, &xarrview);CHKERRQ(ierr);
+
+    for(i=0; i<n; ++i){
+      (xarr+var_offset)[i] = xarrview[i];
+    }
+
+    ierr = DMNetworkGetConnectedVertices(netdm, e, &conn_comp);CHKERRQ(ierr);
+    vstart = conn_comp[0];
+    vend = conn_comp[1];
+
+    ierr = DMNetworkGetVariableOffset(netdm, vstart, &offsetstart);CHKERRQ(ierr);
+    ierr = DMNetworkGetVariableOffset(netdm, vend, &offsetend);CHKERRQ(ierr);
+
+    (xarr + offsetstart)[0] = 0.0;
+    (xarr + offsetend)[0] = 0.0;
+
+    ierr = VecRestoreArrayRead(highway->X, &xarrview);CHKERRQ(ierr);
+  }/*end edge loop */
+  
+  ierr = DMLocalToGlobalBegin(netdm, lX, ADD_VALUES, X);CHKERRQ(ierr);
+  ierr = DMLocalToGlobalEnd(netdm, lX, ADD_VALUES, X);CHKERRQ(ierr);
+  ierr = DMRestoreLocalVector(netdm, &lX);CHKERRQ(ierr);
+
+  PetscFunctionReturn(0);
+}
+    

@@ -77,7 +77,9 @@ typedef struct _ts_Network *TSNetwork;
 
 extern PetscErrorCode TSNetworkCreate(MPI_Comm,TSNetwork*);
 
-extern PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, PetscInt network_case, const char* filename);
+extern PetscErrorCode TSNetworkCreateWithStructure(TSNetwork* network, DM* netdm, PetscInt network_case, PetscInt nodes_per_highway, const char* filename);
+
+extern PetscErrorCode TSNetworkSetSolution(TSNetwork, DM, Vec);
 
 extern PetscErrorCode TSNetworkDistribute(MPI_Comm, TSNetwork, PetscBool);
 
